@@ -21,19 +21,28 @@ import sys
 import argparse
 
 class fmt(dict):
-    """Easy ANSI formatting"""
+    """Easy ANSI formatting
+
+    fmt = fmt()
+    print fmt.f('yellow'), "Yellow foreground"
+    print fmt.b('red'), "Yellow fg, red background"
+    print fmt.bfs('blue', 'magenta', 'bright')
+    print "Blue bg, magenta fg, bright style"
+    print fmt.s('normal')
+    print "Blue bg, magenta fg, normal style"
+    print fmt.r, "Everything reset to normal"
+
+    Any permutation of f/b/s is a valid method to call.
+    """
     def __init__(self):
-        self['_f'] = { 'black': 30, 'red': 31, 'green': 32, 'yellow': 33,
-                       'blue': 34, 'magenta': 35, 'cyan': 36, 'white': 37,
-                       'reset': 39 }
-        self['_b'] = { 'black': 40, 'red': 41, 'green': 42, 'yellow': 43,
-                       'blue': 44, 'magenta': 45, 'cyan': 46, 'white': 47,
-                       'reset': 49 }
-        self['_s'] = { 'normal': 22, 'bright': 1, 'dim': 2, 'reset': 0,
-                       'transparent': 8 }
-        self['f'] = self['_f']['reset']
-        self['b'] = self['_b']['reset']
-        self['s'] = self['_s']['normal']
+        self['f'] = { 'black': 30, 'red': 31, 'green': 32, 'yellow': 33,
+                      'blue': 34, 'magenta': 35, 'cyan': 36, 'white': 37,
+                      'reset': 39 }
+        self['b'] = { 'black': 40, 'red': 41, 'green': 42, 'yellow': 43,
+                      'blue': 44, 'magenta': 45, 'cyan': 46, 'white': 47,
+                      'reset': 49 }
+        self['s'] = { 'normal': 22, 'bright': 1, 'dim': 2, 'reset': 0,
+                      'transparent': 8 }
         self.colours = self.has_colours(sys.stdout)
 
     def has_colours(self, stream):
@@ -54,22 +63,22 @@ class fmt(dict):
     def g(self, k, *v):
         if len(k) != len(v):
             raise ValueError("Needs to be of the same length")
-        t = self.copy()
+        t = []
         for c in k:
-            if c in t: t[c] = self["_%s" % c][v[k.index(c)]]
-        return self.p(t['f'], t['b'], t['s'])
+            if c in self: t.append(self[c][v[k.index(c)]])
+        return self.p(*t)
 
     @property
     def r(self):
-        return self.p(self['f'], self['b'], self['_s']['reset'])
+        return self.fbs('reset', 'reset', 'reset')
 
     def c(self, txt):
         exp = re.compile(r'\x1B\[[0-9;]*[mK]')
         return exp.sub('', txt)
 
-    def p(self, f, b, s):
+    def p(self, *cs):
         if self.colours:
-            return '\033[%s;%s;%sm' % (f, b, s)
+            return '\033[%sm' % ";".join([str(c) for c in cs])
         return ''
 
 fmt = fmt() # We really don't need more than one instance here.
@@ -166,7 +175,6 @@ class Entries(list):
             out += '\n'
         return out.strip('\n')
 
-
     def append(self, obj):
         list.append(self, obj)
         self.sort()
@@ -200,10 +208,10 @@ class Calendar(object):
                 ls[i] = ls[i].replace("> ", ">%s" % fmt.bf('blue', 'white'))
                 ls[i] = ls[i].replace("%s>" % su, "%s%s%s>" % \
                                       (fmt.bfs('red', 'reset', 'bright'),
-                                      su, fmt.bfs('red', 'reset', 'normal')))
+                                      su, fmt.s('normal')))
             ls[i] = ls[i].replace("%s " % su, "%s%s%s " % \
                                   (fmt.bfs('blue', 'magenta', 'bright'),
-                                  su, fmt.bs('blue', 'normal')))
+                                  su, fmt.s('normal')))
         return "%s%s" % (('%s\n' % fmt.r).join(ls), fmt.r)
 
     def split(self, char):
@@ -248,3 +256,4 @@ if __name__ == '__main__':
     print ''
     main(bdt=args.date)
     print ''
+
