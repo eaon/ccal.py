@@ -4,7 +4,7 @@
 Python implementation to process ccal style ~/.cal.dat files"""
 
 ## TODO
-# Fix WD (per listing? On the fly?)
+# Return multiple objects per WD if it would apply to multiple days.
 # @action ls -- list (with comments)
 # @action add -- new entry (with comment)
 # Relative date parsing '(next) %d/m/y', 'last %d/m/y', 'tomorrow',
@@ -61,8 +61,14 @@ class fmt(dict):
         return lambda *v: self.g(k, *v)
 
     def g(self, k, *v):
+        a = re.compile(r'^[fbs]+$')
+        if not a.match(k):
+            raise UnboundLocalError("Method can only a permutation of f/b/s " \
+                                    + "('%s' given)" % k)
         if len(k) != len(v):
-            raise ValueError("Needs to be of the same length")
+            raise TypeError("Method name length and arguments passed need to" \
+                            + "be of the same length (%s and %s given)" % \
+                            (len(k), len(v)))
         t = []
         for c in k:
             if c in self: t.append(self[c][v[k.index(c)]])
@@ -84,14 +90,13 @@ class fmt(dict):
 fmt = fmt() # We really don't need more than one instance here.
 
 class Entry(object):
-    def __new__(cls, line=''):
+    def __new__(cls, line='', bdt=dt.datetime.now()):
         """Calender Entry
 
         In some cases when we instantiate an Entry, it turns out it's not an
         entry but a comment of a previous one. In this case, we're just going
         to return the line it was instanciated with instead.
         """
-        now = dt.datetime.now()
         self = super(Entry, cls).__new__(cls)
         self.comm = ''
         line = line.strip()
@@ -107,23 +112,19 @@ class Entry(object):
             d = int(wd[1])
         except:
             return line
-        if yyyy < 1970: yyyy = now.year
-        if mm < 1: mm = now.month
-        if dd < 1 and (yyyy != now.year or mm != now.month):
+        if yyyy < 1970: yyyy = bdt.year
+        if mm < 1: mm = bdt.month
+        if dd < 1 and (yyyy != bdt.year or mm != bdt.month):
             return None
-        #w = dt.datetime(yyyy, mm, 1).isocalendar() 
-        #cw = now.isocalendar()[1]-dt.datetime(dt.2, 8, 31).isocalendar()[1])+1
-        weekday = dt.datetime.now().isoweekday()
-        if w and d is not None:
-            dd = dt.datetime.now().day
-            self.desc += ' (Nope)'
-        if w == 0 and d > 0:
-            d = dt.timedelta(days=-(weekday-d))
-            dd = (dt.datetime.now() + d).day
-        if not dd > 0:
-            return None
-        #if not(w == 0 and d == 0):
-        #    dd = dt.datetime.now().day
+        fw = dt.datetime(yyyy, mm, 1)
+        if w == 1 and d != 0 and fw.isoweekday() > d:
+            n = dt.timedelta(days=7)
+            w = fw + n
+        else:
+            w = dt.datetime(yyyy, mm, (w*7)-6 if w > 0 else bdt.day)
+        if d != 0:
+            d = dt.timedelta(days=d-w.isoweekday())
+            dd = (w + d).day
         self.dt = dt.datetime(yyyy, mm, dd)
         return self
 
@@ -131,7 +132,7 @@ class Entry(object):
         return self.dt.__getattribute__(item)
 
     def __repr__(self):
-        return self.dt.strftime("%%a %%e %s" % self.desc)
+        return self.dt.strftime("%%a %%e: %s" % self.desc)
 
     def full(self):
         #comment = self.comm.split('\n')
@@ -154,7 +155,7 @@ class Entries(list):
 
         lentry = None
         for line in self.caldat:
-            entry = Entry(line)
+            entry = Entry(line, bdt[0])
             if isinstance(entry, Entry) and entry['year'] in self.years and \
                entry['month'] in self.months:
                 list.append(self, entry) # self.append sorts, quicker that way
@@ -169,7 +170,8 @@ class Entries(list):
         out = ""
         for entry in self:
             if entry['day'] in self.days:
-                out += "%s*%s%s%s%s" % (fmt.s('transparent'), fmt.r, fmt.bf('red', 'reset'), entry, fmt.r)
+                out += "%s*%s%s%s%s" % (fmt.s('transparent'), fmt.r,
+                                        fmt.bf('red', 'reset'), entry, fmt.r)
             else:
                 out += " %s%s%s" % (fmt.bf('white', 'black'), entry, fmt.r)
             out += '\n'
@@ -201,17 +203,21 @@ class Calendar(object):
             if self.hl[0].year == self.year and self.hl[0].month == self.month:
                 for day in self.hl:
                     dstr = ' %s ' % day.strftime("%e")
+                    # Replace with 1 more char than necessary so we can
+                    # identify continous matches
                     dhls = "<%s> " % dstr[1:-1]
                     ls[i] = ls[i].replace(dstr, dhls)
                 ls[i] = ls[i].replace("><", " ")
                 ls[i] = ls[i].replace("<", "%s<" % fmt.bf('red', 'reset'))
                 ls[i] = ls[i].replace("> ", ">%s" % fmt.bf('blue', 'white'))
+                # Highlighted Sundays are bright/bold
                 ls[i] = ls[i].replace("%s>" % su, "%s%s%s>" % \
                                       (fmt.bfs('red', 'reset', 'bright'),
                                       su, fmt.s('normal')))
-            ls[i] = ls[i].replace("%s " % su, "%s%s%s " % \
-                                  (fmt.bfs('blue', 'magenta', 'bright'),
-                                  su, fmt.s('normal')))
+            # Sundays are magenta and bright/bold
+            ls[i] = ("%s%s%s " % \
+                     (fmt.fs('magenta', 'bright'), su,
+                      fmt.fs('white', 'normal'))).join(ls[i].rsplit("%s " % su, 1))
         return "%s%s" % (('%s\n' % fmt.r).join(ls), fmt.r)
 
     def split(self, char):
@@ -229,7 +235,7 @@ def nextTo(one, two):
 
 def main(bdt):
     entries = Entries(bdt=bdt)
-    cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (dt.datetime.now(),))
+    cal = Calendar(bdt[0], bdt if len(bdt) > 0 else (dt.datetime.now(),))
     nextTo(cal, repr(entries))
 
 if __name__ == '__main__':
@@ -238,6 +244,9 @@ if __name__ == '__main__':
     parser.add_argument("date", nargs='*')
     parser.add_argument("-c", action="store_true")
     args = parser.parse_args()
+    if args.action not in ("ls", "add", "ia"):
+        args.date.insert(0, args.action)
+        args.action = "ls"
     if not args.date:
         args.date = (dt.datetime.now(),)
     elif len(args.date) == 1:
