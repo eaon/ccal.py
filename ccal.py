@@ -244,31 +244,45 @@ def main(bdt):
     nextTo(cal, repr(entries))
 
 if __name__ == '__main__':
-    # XXX
-    parser = argparse.ArgumentParser()
-    parser.add_argument("action", nargs="?", default="ls")
-    parser.add_argument("date", nargs='*')
-    parser.add_argument("-c", action="store_true")
-    args = parser.parse_args()
-    if args.action not in ("ls", "add", "ia"):
-        args.date.insert(0, args.action)
-        args.action = "ls"
-    if not args.date:
-        args.date = (dt.datetime.now(),)
-    elif len(args.date) == 1:
-        args.date = (dt.datetime(int(args.date[-1]), dt.datetime.now().month, 1),)
-    elif len(args.date) == 2:
-        try:
-            args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date), "%d %B %Y"),)
-        except:
-            args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date), "%d %b %Y"),)
-    elif len(args.date) > 2:
-        month = args.date[-2:][0]
-        year = args.date[-2:][1]
-        args.date = tuple([dt.datetime.strptime("%s %s %s" % (day, month, year), "%d %B %Y") for day in args.date[:-2]])
-    if args.c:
-        fmt.colours = args.c
+    # If nothing is passed, assume ls
+    if len(sys.argv) > 1:
+        parser = argparse.ArgumentParser('parent', add_help=False)
+        parser.add_argument('--version', action='version',
+                            version='%(prog)s 0.1')
+        parser.add_argument('-c', action='store_true',
+                            help='Force colored output')
+        parser = argparse.ArgumentParser(parents=[parser])
+        sub_p = parser.add_subparsers(help='Actions')
+        p_ls = sub_p.add_parser('ls', help='List calendar entries')
+        p_ls.add_argument("-C", "--comments",
+                          help='Include comments in listing',
+                          action='store_true')
+        p_ls.add_argument("date", nargs='*')
+        p_add = sub_p.add_parser('add', help='Add calendar entry')
+        p_add.add_argument("date")
+        p_add.add_argument("description")
+        p_add.add_argument("comment", nargs="?")
+        #p_ia = sub_p.add_parser('ia', help='Interactive mode')
+        args = parser.parse_args()
+        if not args.date:
+            args.date = (dt.datetime.now(),)
+        elif len(args.date) == 1:
+            args.date = (dt.datetime(int(args.date[-1]), dt.datetime.now().month, 1),)
+        elif len(args.date) == 2:
+            try:
+                args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date), "%d %B %Y"),)
+            except:
+                args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date), "%d %b %Y"),)
+        elif len(args.date) > 2:
+            month = args.date[-2:][0]
+            year = args.date[-2:][1]
+            args.date = tuple([dt.datetime.strptime("%s %s %s" % (day, month, year), "%d %B %Y") for day in args.date[:-2]])
+        if args.c:
+            fmt.colours = args.c
+        dates = args.date
+    else:
+        dates = (dt.datetime.now(),)
     print ''
-    main(bdt=args.date)
+    main(bdt=dates)
     print ''
 
