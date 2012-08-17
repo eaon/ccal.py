@@ -1,10 +1,11 @@
 #!/usr/bin/env python
-"""ccal.py
+"""ccal.py 0.1
 
 Python implementation to process ccal style ~/.cal.dat files"""
 
 ## TODO
 # Return multiple objects per WD if it would apply to multiple days.
+# Implement @actions properly
 # @action ls -- list (with comments)
 # @action add -- new entry (with comment)
 # Relative date parsing '(next) %d/m/y', 'last %d/m/y', 'tomorrow',
@@ -12,7 +13,7 @@ Python implementation to process ccal style ~/.cal.dat files"""
 # @action del -- delete entry (auto complete?)
 # @action ia -- interactive mode (automatically update screen)
 # ~/.ccalpy.rc ?
-# Legacy .dates format? regexp?
+# Include legacy .dates format via regexp?
 
 import datetime as dt
 import calendar as cal
@@ -96,6 +97,9 @@ class Entry(object):
         In some cases when we instantiate an Entry, it turns out it's not an
         entry but a comment of a previous one. In this case, we're just going
         to return the line it was instanciated with instead.
+
+        In the future, this might return multiple Entry objects if a dynamic
+        date occures more than once a month.
         """
         self = super(Entry, cls).__new__(cls)
         self.comm = ''
@@ -135,6 +139,7 @@ class Entry(object):
         return self.dt.strftime("%%a %%e: %s" % self.desc)
 
     def full(self):
+        # XXX
         #comment = self.comm.split('\n')
         #if len(comment) > 0:
         #    comment = '%s\n%s\n' % ('\n'.join(comment[:len(comment)-1]), clr(comment[-1], 'underline'))
@@ -239,6 +244,7 @@ def main(bdt):
     nextTo(cal, repr(entries))
 
 if __name__ == '__main__':
+    # XXX
     parser = argparse.ArgumentParser()
     parser.add_argument("action", nargs="?", default="ls")
     parser.add_argument("date", nargs='*')
