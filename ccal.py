@@ -4,10 +4,13 @@
 Python implementation to process ccal style ~/.cal.dat files"""
 
 ## TODO
+# WD special cases: 9 -> last, 0 -> every
 # Return multiple objects per WD if it would apply to multiple days.
+# Periodic with base date (WD -> days)
 # Implement @actions properly
 # @action ls -- list (with comments)
 # @action add -- new entry (with comment)
+# @action search -- search for entries mentioning $value (3 month range?)
 # Relative date parsing '(next) %d/m/y', 'last %d/m/y', 'tomorrow',
 #  'yesterday', '4 %d/m/y ago', '(in) 2 %d/m/y'
 # @action del -- delete entry (auto complete?)
@@ -19,23 +22,30 @@ import datetime as dt
 import calendar as cal
 import re
 import sys
+import os
 import argparse
+
+now = dt.datetime.now
 
 class fmt(dict):
     """Easy ANSI formatting
 
-    fmt = fmt()
-    print fmt.f('yellow'), "Yellow foreground"
-    print fmt.b('red'), "Yellow fg, red background"
-    print fmt.bfs('blue', 'magenta', 'bright')
-    print "Blue bg, magenta fg, bright style"
-    print fmt.s('normal')
-    print "Blue bg, magenta fg, normal style"
-    print fmt.r, "Everything reset to normal"
+    >>> fmt = fmt()
+    >>> print fmt.f('yellow'), "Yellow foreground"
+    >>> print fmt.b('red'), "Yellow fg, red background"
+    >>> print fmt.bfs('blue', 'magenta', 'bright')
+    >>> print "Blue bg, magenta fg, bright style"
+    >>> print fmt.s('normal')
+    >>> print "Blue bg, magenta fg, normal style"
+    >>> print fmt.r, "Everything reset to normal"
+    >>> foo = "%sHello!%s" % (fmt.s('bright'), fmt.r)
+    >>> print fmt.c(foo)
 
-    Any permutation of f/b/s is a valid method to call.
+    Any permutation of f/b/s as well as c is a valid method to call, r is a
+    static attribute to reset colouring.
     """
     def __init__(self):
+        """Initialise standard colours, styles and colouring support"""
         self['f'] = { 'black': 30, 'red': 31, 'green': 32, 'yellow': 33,
                       'blue': 34, 'magenta': 35, 'cyan': 36, 'white': 37,
                       'reset': 39 }
@@ -44,9 +54,10 @@ class fmt(dict):
                       'reset': 49 }
         self['s'] = { 'normal': 22, 'bright': 1, 'dim': 2, 'reset': 0,
                       'transparent': 8 }
-        self.colours = self.has_colours(sys.stdout)
+        self.colors = self.has_colors(sys.stdout)
 
-    def has_colours(self, stream):
+    def has_colors(self, stream):
+        """Determine if our output stream supports ANSI colouring"""
         if not hasattr(stream, "isatty"):
             return False
         if not stream.isatty():
@@ -58,40 +69,57 @@ class fmt(dict):
         except:
             return False # guess false in case of error
 
-    def __getattr__(self, k):
-        return lambda *v: self.g(k, *v)
+    def __getattr__(self, attr):
+        """Shortcuts for easier use"""
+        valid = re.compile(r'^[fbs]+$')
+        if not valid.match(attr) and not attr in ('r', 'c') and \
+           not attr.startswith('__'):
+            raise UnboundLocalError("Method can only be a permutation of " \
+                                    + "f/b/s or c, attribute can only be r " \
+                                    + "('%s' given)" % attr)
+        elif attr == 'r':
+            return self.reset
+        elif attr == 'c':
+            return lambda string: self.clear(string)
+        elif attr.startswith('__'):
+            return dict.__getattr__(self, attr)
+        return lambda *values: self.format(self.lookup(attr, *values))
 
-    def g(self, k, *v):
-        a = re.compile(r'^[fbs]+$')
-        if not a.match(k):
-            raise UnboundLocalError("Method can only a permutation of f/b/s " \
-                                    + "('%s' given)" % k)
-        if len(k) != len(v):
-            raise TypeError("Method name length and arguments passed need to" \
+    def lookup(self, keys, *names):
+        """Returns values for color names"""
+        if len(keys) != len(names):
+            raise TypeError("Method name length and values passed need to" \
                             + "be of the same length (%s and %s given)" % \
-                            (len(k), len(v)))
-        t = []
-        for c in k:
-            if c in self: t.append(self[c][v[k.index(c)]])
-        return self.p(*t)
+                            (len(method), len(names)))
+        values = []
+        for char in keys:
+            if char in self and names[keys.index(char)] in self[char]:
+                values.append(self[char][names[keys.index(char)]])
+            else:
+                raise KeyError("Colour/style '%s' not found in '%s'" % \
+                               (names[keys.index(char)] ,char))
+        return values
 
     @property
-    def r(self):
+    def reset(self):
+        """ANSI escape sequence clearing all colouring"""
         return self.fbs('reset', 'reset', 'reset')
 
-    def c(self, txt):
+    def clear(self, string):
+        """Clear ANSI coloring from a string"""
         exp = re.compile(r'\x1B\[[0-9;]*[mK]')
-        return exp.sub('', txt)
+        return exp.sub('', string)
 
-    def p(self, *cs):
-        if self.colours:
-            return '\033[%sm' % ";".join([str(c) for c in cs])
+    def format(self, colors):
+        """Format ANSI escape sequence"""
+        if self.colors:
+            return '\033[%sm' % ";".join([str(color) for color in colors])
         return ''
 
 fmt = fmt() # We really don't need more than one instance here.
 
 class Entry(object):
-    def __new__(cls, line='', bdt=dt.datetime.now()):
+    def __new__(cls, line='', bdt=now()):
         """Calender Entry
 
         In some cases when we instantiate an Entry, it turns out it's not an
@@ -112,23 +140,41 @@ class Entry(object):
             yyyy = int(yyyy)
             mm = int(mm)
             dd = int(dd)
-            w = int(wd[0])
-            d = int(wd[1])
+            # week/day
+            if dd < 1:
+                w = int(wd[0])
+                d = int(wd[1])
+            # periodic
+            else:
+                w = 0
+                d = int(wd)
         except:
             return line
         if yyyy < 1970: yyyy = bdt.year
         if mm < 1: mm = bdt.month
         if dd < 1 and (yyyy != bdt.year or mm != bdt.month):
             return None
+        # week/day
         fw = dt.datetime(yyyy, mm, 1)
-        if w == 1 and d != 0 and fw.isoweekday() > d:
+        if dd < 1 and w == 1 and d != 0 and fw.isoweekday() > d:
             n = dt.timedelta(days=7)
             w = fw + n
-        else:
+        elif dd < 1:
             w = dt.datetime(yyyy, mm, (w*7)-6 if w > 0 else bdt.day)
-        if d != 0:
+        if dd < 1 and d != 0:
             d = dt.timedelta(days=d-w.isoweekday())
             dd = (w + d).day
+        # periodic
+        if isinstance(d, int) and dd > 0 and d > 0:
+            entries = []
+            self.dt = dt.datetime(yyyy, mm, dd)
+            while self.dt.month <= bdt.month and self.dt.year <= bdt.year:
+                self.dt = self.dt + dt.timedelta(days=d)
+                if self.dt.month == bdt.month and self.dt.year == bdt.year:
+                    entries.append(Entry("%s 00 %s" % \
+                                         (self.dt.strftime("%Y %m %d"),
+                                         self.desc), bdt))
+            return entries
         self.dt = dt.datetime(yyyy, mm, dd)
         return self
 
@@ -150,7 +196,7 @@ class Entry(object):
         return cmp(self.dt, other.dt)
 
 class Entries(list):
-    def __init__(self, fp='.cal.dat', bdt=(dt.datetime.now(),)):
+    def __init__(self, fp=os.path.expanduser('~/.cal.dat'), bdt=(now(),)):
         list.__init__(self)
         self.caldat = open(fp)
         self.bdt = bdt
@@ -164,8 +210,13 @@ class Entries(list):
             if isinstance(entry, Entry) and entry['year'] in self.years and \
                entry['month'] in self.months:
                 list.append(self, entry) # self.append sorts, quicker that way
-            if isinstance(entry, str) and lentry in self:
+            elif isinstance(entry, list):
+                self.extend(entry)
+                continue
+            elif isinstance(entry, str) and lentry in self:
                 self[self.index(lentry)].comm = entry
+                continue
+            elif isinstance(entry, type(None)):
                 continue
             lentry = entry
 
@@ -187,7 +238,7 @@ class Entries(list):
         self.sort()
 
 class Calendar(object):
-    def __init__(self, bdt=dt.datetime.now(), hl=(dt.date.today(),)):
+    def __init__(self, bdt=now(), hl=(dt.date.today(),)):
         self.year = bdt.year
         self.month = bdt.month
         self.hl = hl
@@ -238,9 +289,9 @@ def nextTo(one, two):
         for i in xrange(len(one)):
             print one[i], two[i]
 
-def main(bdt):
+def ls(bdt):
     entries = Entries(bdt=bdt)
-    cal = Calendar(bdt[0], bdt if len(bdt) > 0 else (dt.datetime.now(),))
+    cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (now(),))
     nextTo(cal, repr(entries))
 
 if __name__ == '__main__':
@@ -250,24 +301,25 @@ if __name__ == '__main__':
         parser.add_argument('--version', action='version',
                             version='%(prog)s 0.1')
         parser.add_argument('-c', action='store_true',
-                            help='Force colored output')
+                            help='force colored output')
+        parser.add_argument('-d', '--dates')
         parser = argparse.ArgumentParser(parents=[parser])
-        sub_p = parser.add_subparsers(help='Actions')
-        p_ls = sub_p.add_parser('ls', help='List calendar entries')
+        sub_p = parser.add_subparsers(help='actions')
+        p_ls = sub_p.add_parser('ls', help='list calendar entries')
         p_ls.add_argument("-C", "--comments",
-                          help='Include comments in listing',
+                          help='include comments in listing',
                           action='store_true')
         p_ls.add_argument("date", nargs='*')
-        p_add = sub_p.add_parser('add', help='Add calendar entry')
+        p_add = sub_p.add_parser('add', help='add calendar entry')
         p_add.add_argument("date")
         p_add.add_argument("description")
         p_add.add_argument("comment", nargs="?")
         #p_ia = sub_p.add_parser('ia', help='Interactive mode')
         args = parser.parse_args()
         if not args.date:
-            args.date = (dt.datetime.now(),)
+            args.date = (now(),)
         elif len(args.date) == 1:
-            args.date = (dt.datetime(int(args.date[-1]), dt.datetime.now().month, 1),)
+            args.date = (dt.datetime(int(args.date[-1]), now().month, 1),)
         elif len(args.date) == 2:
             try:
                 args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date), "%d %B %Y"),)
@@ -278,11 +330,11 @@ if __name__ == '__main__':
             year = args.date[-2:][1]
             args.date = tuple([dt.datetime.strptime("%s %s %s" % (day, month, year), "%d %B %Y") for day in args.date[:-2]])
         if args.c:
-            fmt.colours = args.c
+            fmt.colors = args.c
         dates = args.date
     else:
-        dates = (dt.datetime.now(),)
+        dates = (now(),)
     print ''
-    main(bdt=dates)
+    ls(bdt=dates)
     print ''
 
