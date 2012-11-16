@@ -231,7 +231,7 @@ class Entries(list):
     def __repr__(self):
         out = ""
         for entry in self:
-            if entry['day'] in self.days:
+            if entry['day'] in self.days and now().month in self.months:
                 out += "%s*%s%s%s%s" % (fmt.s('transparent'), fmt.r,
                                         fmt.bf('red', 'reset'), entry, fmt.r)
             else:
