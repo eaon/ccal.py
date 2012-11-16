@@ -7,7 +7,6 @@ Python implementation to process ccal style ~/.cal.dat files"""
 # Floating dates per YYYY MM DD WD @D
 # WD special cases: 9 -> last, 0 -> every
 # Return multiple objects per WD if it would apply to multiple days.
-# Periodic with base date (WD -> days)
 # Implement @actions properly
 # @action ls -- list (with comments)
 # @action add -- new entry (with comment)
@@ -121,7 +120,7 @@ class fmt(dict):
 fmt = fmt() # We really don't need more than one instance here.
 
 class Entry(object):
-    def __new__(cls, line='', bdt=now(), edt=None):
+    def __new__(cls, line='', bdt=now(), edt=None, exp=True):
         """Calender Entry
 
         In some cases when we instantiate an Entry, it turns out it's not an
@@ -157,6 +156,8 @@ class Entry(object):
         # Must be a comment then
         except:
             return line
+        if not exp and not wd.startswith("00"):
+            return line
         if yyyy < 1970: yyyy = bdt.year
         if mm < 1: mm = bdt.month
         #if dd < 1 and (yyyy != bdt.year or mm != bdt.month):
@@ -174,7 +175,7 @@ class Entry(object):
             d = dt.timedelta(days=d-w.isoweekday())
             dd = (w + d).day
         # periodic
-        if isinstance(d, int) and dd > 0 and d > 0:
+        if exp and isinstance(d, int) and dd > 0 and d > 0:
             entries = []
             self.dt = dt.datetime(yyyy, mm, dd)
             while self.dt.month <= bdt.month and self.dt.year <= bdt.year:
@@ -204,7 +205,8 @@ class Entry(object):
         return cmp(self.dt, other.dt)
 
 class Entries(list):
-    def __init__(self, fp=os.path.expanduser('~/.cal.dat'), bdt=(now(),)):
+    def __init__(self, fp=os.path.expanduser('~/.cal.dat'), bdt=(now(),),
+                 exp=True):
         list.__init__(self)
         self.caldat = open(fp)
         self.bdt = bdt
@@ -214,7 +216,7 @@ class Entries(list):
 
         lentry = None
         for line in self.caldat:
-            entry = Entry(line, bdt[0])
+            entry = Entry(line, bdt[0], exp=exp)
             if isinstance(entry, Entry) and entry['year'] in self.years and \
                entry['month'] in self.months:
                 list.append(self, entry) # self.append sorts, quicker that way
@@ -297,13 +299,21 @@ def nextTo(one, two):
         for i in xrange(len(one)):
             print one[i], two[i]
 
-def ls(bdt):
+def ls(bdt, pvs=""):
     entries = Entries(bdt=bdt)
+    if pvs:
+        pvd = bdt[0] + dt.timedelta(days=-(bdt[0].day-2)+30)
+        pvs = repr(Entries(bdt=(pvd,), exp=False))
+    if pvs:
+        pvs = "%s%s" % (pvd.strftime("\n %B --\n"),
+                        '\n'.join(pvs.split('\n')[:7]))
+    else:
+        pvs = ""
     cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (now(),))
-    nextTo(cal, repr(entries))
+    nextTo(cal, repr(entries)+pvs)
 
 if __name__ == '__main__':
-    # If nothing is passed, assume ls
+    # If nothing is passed, assume ls --preview
     if len(sys.argv) > 1:
         parser = argparse.ArgumentParser('parent', add_help=False)
         parser.add_argument('--version', action='version',
@@ -314,6 +324,9 @@ if __name__ == '__main__':
         parser = argparse.ArgumentParser(parents=[parser])
         sub_p = parser.add_subparsers(help='actions')
         p_ls = sub_p.add_parser('ls', help='list calendar entries')
+        p_ls.add_argument("-p", "--preview",
+                          help="preview next month's non-periodic entries",
+                          action='store_true')
         p_ls.add_argument("-C", "--comments",
                           help='include comments in listing',
                           action='store_true')
@@ -326,6 +339,7 @@ if __name__ == '__main__':
         args = parser.parse_args()
         if not args.date:
             args.date = (now(),)
+            args.preview = True
         elif len(args.date) == 1:
             args.date = (dt.datetime(int(args.date[-1]), now().month, 1),)
         elif len(args.date) == 2:
@@ -344,9 +358,11 @@ if __name__ == '__main__':
         if args.c:
             fmt.colors = args.c
         dates = args.date
+        pvs = args.preview
     else:
         dates = (now(),)
+        pvs = True
     print ''
-    ls(bdt=dates)
+    ls(bdt=dates, pvs=pvs)
     print ''
 
