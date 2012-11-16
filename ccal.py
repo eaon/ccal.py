@@ -4,6 +4,7 @@
 Python implementation to process ccal style ~/.cal.dat files"""
 
 ## TODO
+# Floating dates per YYYY MM DD WD @D
 # WD special cases: 9 -> last, 0 -> every
 # Return multiple objects per WD if it would apply to multiple days.
 # Periodic with base date (WD -> days)
@@ -81,6 +82,7 @@ class fmt(dict):
             return self.reset
         elif attr == 'c':
             return lambda string: self.clear(string)
+        # >>> help(fmt)
         elif attr.startswith('__'):
             return dict.__getattr__(self, attr)
         return lambda *values: self.format(self.lookup(attr, *values))
@@ -119,7 +121,7 @@ class fmt(dict):
 fmt = fmt() # We really don't need more than one instance here.
 
 class Entry(object):
-    def __new__(cls, line='', bdt=now()):
+    def __new__(cls, line='', bdt=now(), edt=None):
         """Calender Entry
 
         In some cases when we instantiate an Entry, it turns out it's not an
@@ -132,6 +134,10 @@ class Entry(object):
         self = super(Entry, cls).__new__(cls)
         self.comm = ''
         line = line.strip()
+        if edt:
+            self.dt = edt
+            self.desc = line
+            return self
         if len(line) < 14 or line.count(' ') < 4:
             return line
         yyyy, mm, dd, wd = line.split(' ')[:4]
@@ -148,16 +154,19 @@ class Entry(object):
             else:
                 w = 0
                 d = int(wd)
+        # Must be a comment then
         except:
             return line
         if yyyy < 1970: yyyy = bdt.year
         if mm < 1: mm = bdt.month
-        if dd < 1 and (yyyy != bdt.year or mm != bdt.month):
-            return None
+        #if dd < 1 and (yyyy != bdt.year or mm != bdt.month):
+        #    return None
         # week/day
         fw = dt.datetime(yyyy, mm, 1)
-        if dd < 1 and w == 1 and d != 0 and fw.isoweekday() > d:
-            n = dt.timedelta(days=7)
+        #if yyyy == bdt.year and mm == bdt.month:
+        #    print fw.isoweekday(), yyyy, mm, bdt
+        if dd < 1 and w != 0 and d != 0 and fw.isoweekday() > d:
+            n = dt.timedelta(days=7*w)
             w = fw + n
         elif dd < 1:
             w = dt.datetime(yyyy, mm, (w*7)-6 if w > 0 else bdt.day)
@@ -171,9 +180,7 @@ class Entry(object):
             while self.dt.month <= bdt.month and self.dt.year <= bdt.year:
                 self.dt = self.dt + dt.timedelta(days=d)
                 if self.dt.month == bdt.month and self.dt.year == bdt.year:
-                    entries.append(Entry("%s 00 %s" % \
-                                         (self.dt.strftime("%Y %m %d"),
-                                         self.desc), bdt))
+                    entries.append(Entry(self.desc, bdt, self.dt))
             return entries
         self.dt = dt.datetime(yyyy, mm, dd)
         return self
@@ -188,7 +195,8 @@ class Entry(object):
         # XXX
         #comment = self.comm.split('\n')
         #if len(comment) > 0:
-        #    comment = '%s\n%s\n' % ('\n'.join(comment[:len(comment)-1]), clr(comment[-1], 'underline'))
+        #    comment = '%s\n%s\n' % ('\n'.join(comment[:len(comment)-1]),
+        #                            clr(comment[-1], 'underline'))
         #    return comment
         return self.comm
     
@@ -216,8 +224,6 @@ class Entries(list):
             elif isinstance(entry, str) and lentry in self:
                 self[self.index(lentry)].comm = entry
                 continue
-            elif isinstance(entry, type(None)):
-                continue
             lentry = entry
 
         self.sort()
@@ -244,7 +250,8 @@ class Calendar(object):
         self.hl = hl
 
     def __repr__(self):
-        ls = [" %s" % l for l in cal.month(self.year, self.month).split('\n')][:-1]
+        ls = [" %s" % l for l in cal.month(self.year, self.month).split('\n')]
+        ls = ls[:-1]
         for i in xrange(len(ls)):
             while len(ls[i]) < 22:
                 ls[i] += ' '
@@ -273,7 +280,8 @@ class Calendar(object):
             # Sundays are magenta and bright/bold
             ls[i] = ("%s%s%s " % \
                      (fmt.fs('magenta', 'bright'), su,
-                      fmt.fs('white', 'normal'))).join(ls[i].rsplit("%s " % su, 1))
+                      fmt.fs('white',
+                             'normal'))).join(ls[i].rsplit("%s " % su, 1))
         return "%s%s" % (('%s\n' % fmt.r).join(ls), fmt.r)
 
     def split(self, char):
@@ -322,13 +330,17 @@ if __name__ == '__main__':
             args.date = (dt.datetime(int(args.date[-1]), now().month, 1),)
         elif len(args.date) == 2:
             try:
-                args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date), "%d %B %Y"),)
+                args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date),
+                             "%d %B %Y"),)
             except:
-                args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date), "%d %b %Y"),)
+                args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date),
+                             "%d %b %Y"),)
         elif len(args.date) > 2:
             month = args.date[-2:][0]
             year = args.date[-2:][1]
-            args.date = tuple([dt.datetime.strptime("%s %s %s" % (day, month, year), "%d %B %Y") for day in args.date[:-2]])
+            args.date = tuple([dt.datetime.strptime("%s %s %s" % (day, month,
+                                                                  year),
+                                                    "%d %B %Y") for day in args.date[:-2]])
         if args.c:
             fmt.colors = args.c
         dates = args.date
