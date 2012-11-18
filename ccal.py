@@ -5,8 +5,6 @@ Python implementation to process ccal style ~/.cal.dat files"""
 
 ## TODO
 # Floating dates per YYYY MM DD WD @D
-# WD special cases: 9 -> last, 0 -> every
-# Return multiple objects per WD if it would apply to multiple days.
 # Implement @actions properly
 # @action ls -- list (with comments)
 # @action add -- new entry (with comment)
@@ -151,31 +149,43 @@ class Entry(object):
                 d = int(wd[1])
             # periodic
             else:
-                w = 0
+                w = -1
                 d = int(wd)
         # Must be a comment then
         except:
             return line
         if not exp and not wd.startswith("00"):
-            return line
+            return None
         if yyyy < 1970: yyyy = bdt.year
         if mm < 1: mm = bdt.month
-        #if dd < 1 and (yyyy != bdt.year or mm != bdt.month):
-        #    return None
         # week/day
         fw = dt.datetime(yyyy, mm, 1)
-        #if yyyy == bdt.year and mm == bdt.month:
-        #    print fw.isoweekday(), yyyy, mm, bdt
-        if dd < 1 and w != 0 and d != 0 and fw.isoweekday() > d:
+        # every week
+        if exp and w == 0 and d != 0:
+            entries = []
+            for i in range(5):
+                n = dt.timedelta(days=d-fw.isoweekday()+7*i)
+                dd = (fw + n).day
+                self.dt = dt.datetime(yyyy, mm, dd)
+                if self.dt.month == bdt.month:
+                    entries.append(Entry(self.desc, bdt, self.dt))
+            return entries
+        # last week
+        if exp and w == 9 and d != 0:
+            fw = dt.datetime(yyyy, mm, cal.monthrange(yyyy, mm)[1])
+            n = dt.timedelta(days=d-fw.isoweekday())
+            dd = (fw + n).day
+        # specific week
+        if dd < 1 and w != -1 and d != 0 and fw.isoweekday() > d:
             n = dt.timedelta(days=7*w)
             w = fw + n
         elif dd < 1:
             w = dt.datetime(yyyy, mm, (w*7)-6 if w > 0 else bdt.day)
-        if dd < 1 and d != 0:
+        if w != 9 and dd < 1 and d != 0:
             d = dt.timedelta(days=d-w.isoweekday())
             dd = (w + d).day
         # periodic
-        if exp and isinstance(d, int) and dd > 0 and d > 0:
+        if exp and w == -1 and isinstance(d, int) and dd > 0 and d > 0:
             entries = []
             self.dt = dt.datetime(yyyy, mm, dd)
             while self.dt.month <= bdt.month and self.dt.year <= bdt.year:
@@ -224,7 +234,9 @@ class Entries(list):
                 self.extend(entry)
                 continue
             elif isinstance(entry, str) and lentry in self:
-                self[self.index(lentry)].comm = entry
+                self[self.index(lentry)].comm += ('\n' + entry).strip()
+                continue
+            else:
                 continue
             lentry = entry
 
