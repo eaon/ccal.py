@@ -117,6 +117,26 @@ class fmt(dict):
 
 fmt = fmt() # We really don't need more than one instance here.
 
+def ordinal(value):
+    try:
+        value = int(value)
+    except ValueError:
+        return value
+
+    if value % 100//10 != 1:
+        if value % 10 == 1:
+            ordval = u"%d%s" % (value, "st")
+        elif value % 10 == 2:
+            ordval = u"%d%s" % (value, "nd")
+        elif value % 10 == 3:
+            ordval = u"%d%s" % (value, "rd")
+        else:
+            ordval = u"%d%s" % (value, "th")
+    else:
+        ordval = u"%d%s" % (value, "th")
+
+    return ordval
+
 class Entry(object):
     def __new__(cls, line='', bdt=now(), edt=None, exp=True):
         """Calender Entry
@@ -158,6 +178,13 @@ class Entry(object):
             return None
         if yyyy < 1970: yyyy = bdt.year
         if mm < 1: mm = bdt.month
+        if " {" in self.desc and "} " in self.desc:
+            try:
+                oc = int(self.desc.split(" {")[1].split("} ")[0])
+                self.desc = self.desc.replace("{%s}" % oc, ordinal(yyyy - oc))
+            except:
+                pass
+        self.desc = self.desc.replace("\{", "{").replace("\}", "}")
         # week/day
         fw = dt.datetime(yyyy, mm, 1)
         # every week
