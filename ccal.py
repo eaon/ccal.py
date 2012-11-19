@@ -178,9 +178,9 @@ class Entry(object):
             return None
         if yyyy < 1970: yyyy = bdt.year
         if mm < 1: mm = bdt.month
-        if " {" in self.desc and "} " in self.desc:
+        if "{" in self.desc and "}" in self.desc:
             try:
-                oc = int(self.desc.split(" {")[1].split("} ")[0])
+                oc = int((" %s " % self.desc).split(" {")[1].split("} ")[0])
                 self.desc = self.desc.replace("{%s}" % oc, ordinal(yyyy - oc))
             except:
                 pass
