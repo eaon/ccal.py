@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""ccal.py 0.1
+"""ccal.py 0.2
 
 Python implementation to process ccal style ~/.cal.dat files"""
 
@@ -197,22 +197,25 @@ class Entry(object):
                 if self.dt.month == bdt.month:
                     entries.append(Entry(self.desc, bdt, self.dt))
             return entries
-        # last week
+        # last week of the month
         if exp and w == 9 and d != 0:
             fw = dt.datetime(yyyy, mm, cal.monthrange(yyyy, mm)[1])
             n = dt.timedelta(days=d-fw.isoweekday())
             dd = (fw + n).day
-        # specific week
-        if dd < 1 and w != -1 and d != 0 and fw.isoweekday() > d:
+        # every day, but show only once
+        if exp and w == 0 and d == 0:
+            dd = now().day
+        # specific day/week
+        elif exp and dd < 1 and w != -1 and d != 0 and fw.isoweekday() > d:
             n = dt.timedelta(days=7*w)
             w = fw + n
-        elif dd < 1:
+        elif exp and dd < 1 and w != 0:
             w = dt.datetime(yyyy, mm, (w*7)-6 if w > 0 else bdt.day)
-        if w != 9 and dd < 1 and d != 0:
+        if exp and w != 9 and dd < 1 and d != 0:
             d = dt.timedelta(days=d-w.isoweekday())
             dd = (w + d).day
         # periodic
-        if exp and w == -1 and isinstance(d, int) and dd > 0 and d > 0:
+        if exp and w == -1 and isinstance(d, int) and dd > 0 and d > 1:
             entries = []
             self.dt = dt.datetime(yyyy, mm, dd)
             while self.dt.month <= bdt.month and self.dt.year <= bdt.year:
@@ -220,8 +223,16 @@ class Entry(object):
                 if self.dt.month == bdt.month and self.dt.year == bdt.year:
                     entries.append(Entry(self.desc, bdt, self.dt))
             return entries
-        self.dt = dt.datetime(yyyy, mm, dd)
-        return self
+        # daily, but show only once
+        if exp and w == -1 and isinstance(d, int) and dd > 0 and d == 1 and \
+           bdt > dt.datetime(yyyy, mm, dd):
+            dd = bdt.day
+        # XXX
+        try:
+            self.dt = dt.datetime(yyyy, mm, dd)
+            return self
+        except:
+            return
 
     def __getitem__(self, item):
         return self.dt.__getattribute__(item)
@@ -338,17 +349,17 @@ def nextTo(one, two):
         for i in xrange(len(one)):
             print one[i], two[i]
 
-def ls(bdt, pvs=""):
-    entries = Entries(bdt=bdt)
+def ls(bdt, pvs="", fp=os.path.expanduser('~/.cal.dat')):
+    entries = Entries(bdt=bdt, fp=fp)
     if pvs:
         pvd = bdt[0] + dt.timedelta(days=-(bdt[0].day-2)+30)
-        pvs = repr(Entries(bdt=(pvd,), exp=False))
+        pvs = repr(Entries(bdt=(pvd,), fp=fp, exp=False))
     if pvs:
         pvs = "%s%s" % (pvd.strftime("\n %B --\n"),
                         '\n'.join(pvs.split('\n')[:7]))
     else:
         pvs = ""
-    cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (now(),))
+    cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (bdt[0],))
     nextTo(cal, repr(entries)+pvs)
 
 if __name__ == '__main__':
@@ -360,6 +371,7 @@ if __name__ == '__main__':
         parser.add_argument('-c', action='store_true',
                             help='force colored output')
         parser.add_argument('-d', '--dates')
+        parser.set_defaults(dates="~/.cal.dat")
         parser = argparse.ArgumentParser(parents=[parser])
         sub_p = parser.add_subparsers(help='actions')
         p_ls = sub_p.add_parser('ls', help='list calendar entries')
@@ -398,10 +410,12 @@ if __name__ == '__main__':
             fmt.colors = args.c
         dates = args.date
         pvs = args.preview
+        data = args.dates
     else:
         dates = (now(),)
         pvs = True
+        data = "~/.cal.dat"
     print ''
-    ls(bdt=dates, pvs=pvs)
+    ls(bdt=dates, pvs=pvs, fp=os.path.expanduser(data))
     print ''
 
