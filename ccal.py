@@ -386,8 +386,9 @@ def nextTo(one, two):
              merge += "%s %s\n" % (one[i], two[i])
     return merge.strip()
 
-def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False):
-    entries = Entries(bdt=bdt, fp=fp, comm=comm)
+def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False,
+       exp=True):
+    entries = Entries(bdt=bdt, fp=fp, comm=comm, exp=exp)
     pvs = ""
     if pve > 0:
         pvd = bdt[0] + dt.timedelta(days=-(bdt[0].day-2)+30)
@@ -422,6 +423,9 @@ if __name__ == '__main__':
         p_ls.add_argument("-C", "--comments",
                           help='include comments in listing',
                           action='store_true')
+        p_ls.add_argument("-n", "--noperiodic",
+                          help='do not expand periodic dates',
+                          action='store_false')
         p_ls.add_argument("date", nargs='*')
         p_add = sub_p.add_parser('add', help='add calendar entry')
         p_add.add_argument("date")
@@ -456,12 +460,15 @@ if __name__ == '__main__':
             pve = 0
         data = args.data_file
         comm = args.comments
+        exp = args.noperiodic
     else:
         dates = (now(),)
         pve = 7
         data = "~/.cal.dat"
         comm = False
-    out = ls(bdt=dates, pve=pve, fp=os.path.expanduser(data), comm=comm)
+        exp = True
+    out = ls(bdt=dates, pve=pve, fp=os.path.expanduser(data), comm=comm,
+             exp=exp)
     print ''
     print out
     print ''
