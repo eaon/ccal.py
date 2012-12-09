@@ -3,8 +3,30 @@
 
 Python implementation to process ccal style ~/.cal.dat files"""
 
+# License (MIT)
+#
+# Copyright (c) 2012 Michael Zeltner <m@niij.org>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
 ## TODO
-# Floating dates per YYYY MM DD WD @D
+# Floating dates per 'YYYY MM DD WD !D'?
 # Implement @actions properly
 # @action ls -- list (with comments)
 # @action add -- new entry (with comment)
@@ -227,7 +249,7 @@ class Entry(object):
         if exp and w == -1 and isinstance(d, int) and dd > 0 and d == 1 and \
            bdt > dt.datetime(yyyy, mm, dd):
             dd = bdt.day
-        # XXX
+        # XXX dirty stuff, should probably stop earlier?
         try:
             self.dt = dt.datetime(yyyy, mm, dd)
             return self
@@ -238,56 +260,69 @@ class Entry(object):
         return self.dt.__getattribute__(item)
 
     def __repr__(self):
-        return self.dt.strftime("%%a %%e: %s" % self.desc)
+        return nextTo(self.dt.strftime("%a %e:"), self.desc)
 
     def full(self):
-        # XXX
-        #comment = self.comm.split('\n')
-        #if len(comment) > 0:
-        #    comment = '%s\n%s\n' % ('\n'.join(comment[:len(comment)-1]),
-        #                            clr(comment[-1], 'underline'))
-        #    return comment
-        return self.comm
+        """Show entry with comment"""
+        both = "%s\n %s" % \
+               (self.desc,
+                ' # '.join(self.comm.split("\n")).strip().replace(" #","\n #"))
+        return nextTo(self.dt.strftime("%a %e:"), both)
     
     def __cmp__(self, other):
         return cmp(self.dt, other.dt)
 
 class Entries(list):
     def __init__(self, fp=os.path.expanduser('~/.cal.dat'), bdt=(now(),),
-                 exp=True):
+                 exp=True, comm=False):
         list.__init__(self)
         self.caldat = open(fp)
         self.bdt = bdt
         self.years = [d.year for d in bdt]
         self.months = [d.month for d in bdt]
         self.days = [d.day for d in bdt]
+        self.comm = comm
 
-        lentry = None
+        # It's necessary to first create a whole list of entries because
+        # otherwise comments would end up on wrong entries ...
+        entries = []
         for line in self.caldat:
             entry = Entry(line, bdt[0], exp=exp)
-            if isinstance(entry, Entry) and entry['year'] in self.years and \
-               entry['month'] in self.months:
-                list.append(self, entry) # self.append sorts, quicker that way
+            if isinstance(entry, Entry):
+                entries.append(entry) # self.append sorts, quicker that way
             elif isinstance(entry, list):
-                self.extend(entry)
+                entries.extend(entry)
                 continue
-            elif isinstance(entry, str) and lentry in self:
-                self[self.index(lentry)].comm += ('\n' + entry).strip()
+            elif self.comm and isinstance(entry, str) and len(entries) > 0:
+                entries[-1].comm += ('\n' + entry)
                 continue
-            else:
-                continue
-            lentry = entry
+
+        # ... hence we filter out entries later
+        for entry in entries:
+            if entry['year'] in self.years and entry['month'] in self.months:
+                list.append(self, entry)
 
         self.sort()
 
     def __repr__(self):
         out = ""
         for entry in self:
+            e = ''
+            if self.comm and entry.comm:
+                e = entry.full().replace('\n', '%s\n' % fmt.r)
             if entry['day'] in self.days and now().month in self.months:
+                if e:
+                    e = e.replace('        #',
+                                  '        %s#' % fmt.bf('red', 'reset'))
                 out += "%s*%s%s%s%s" % (fmt.s('transparent'), fmt.r,
-                                        fmt.bf('red', 'reset'), entry, fmt.r)
+                                        fmt.bf('red', 'reset'), e or entry,
+                                        fmt.r)
             else:
-                out += " %s%s%s" % (fmt.bf('white', 'black'), entry, fmt.r)
+                if e:
+                    e = e.replace('        #',
+                                  '        %s#' % fmt.bf('white', 'black'))
+                out += " %s%s%s" % (fmt.bf('white', 'black'), e or entry,
+                                    fmt.r)
             out += '\n'
         return out.strip('\n')
 
@@ -342,25 +377,28 @@ class Calendar(object):
 def nextTo(one, two):
     one = one.split('\n')
     two = two.split('\n')
+    merge = ""
     padding = len(fmt.c(one[0]))
     [one.append(' '*padding) for i in xrange(len(two)-len(one))]
     [two.append('') for i in xrange(len(one)-len(two))]
     if len(one) == len(two):
         for i in xrange(len(one)):
-            print one[i], two[i]
+             merge += "%s %s\n" % (one[i], two[i])
+    return merge.strip()
 
-def ls(bdt, pvs="", fp=os.path.expanduser('~/.cal.dat')):
-    entries = Entries(bdt=bdt, fp=fp)
-    if pvs:
+def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False):
+    entries = Entries(bdt=bdt, fp=fp, comm=comm)
+    pvs = ""
+    if pve > 0:
         pvd = bdt[0] + dt.timedelta(days=-(bdt[0].day-2)+30)
         pvs = repr(Entries(bdt=(pvd,), fp=fp, exp=False))
     if pvs:
         pvs = "%s%s" % (pvd.strftime("\n %B --\n"),
-                        '\n'.join(pvs.split('\n')[:7]))
+                        '\n'.join(pvs.split('\n')[:pve]))
     else:
         pvs = ""
     cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (bdt[0],))
-    nextTo(cal, repr(entries)+pvs)
+    return nextTo(cal, repr(entries)+pvs)
 
 if __name__ == '__main__':
     # If nothing is passed, assume ls --preview
@@ -370,14 +408,17 @@ if __name__ == '__main__':
                             version='%(prog)s 0.1')
         parser.add_argument('-c', action='store_true',
                             help='force colored output')
-        parser.add_argument('-d', '--dates')
-        parser.set_defaults(dates="~/.cal.dat")
+        parser.add_argument('-d', '--data-file', metavar="filename", nargs="?",
+                            default="~/.cal.dat",
+                            help="file to load appointments from " + \
+                                 "(default: ~/.cal.dat)")
         parser = argparse.ArgumentParser(parents=[parser])
         sub_p = parser.add_subparsers(help='actions')
         p_ls = sub_p.add_parser('ls', help='list calendar entries')
-        p_ls.add_argument("-p", "--preview",
-                          help="preview next month's non-periodic entries",
-                          action='store_true')
+        p_ls.add_argument("-p", "--preview", type=int, nargs="?", default=7,
+                          metavar="N",
+                          help="preview next month's non-periodic entries " + \
+                                "(default, if set: 7)")
         p_ls.add_argument("-C", "--comments",
                           help='include comments in listing',
                           action='store_true')
@@ -390,7 +431,6 @@ if __name__ == '__main__':
         args = parser.parse_args()
         if not args.date:
             args.date = (now(),)
-            args.preview = True
         elif len(args.date) == 1:
             args.date = (dt.datetime(int(args.date[-1]), now().month, 1),)
         elif len(args.date) == 2:
@@ -403,19 +443,26 @@ if __name__ == '__main__':
         elif len(args.date) > 2:
             month = args.date[-2:][0]
             year = args.date[-2:][1]
-            args.date = tuple([dt.datetime.strptime("%s %s %s" % (day, month,
-                                                                  year),
-                                                    "%d %B %Y") for day in args.date[:-2]])
+            args.date = tuple([dt.datetime.strptime("%s %s %s" % \
+                                                    (day, month, year),
+                                                    "%d %B %Y") \
+                               for day in args.date[:-2]])
         if args.c:
             fmt.colors = args.c
         dates = args.date
-        pvs = args.preview
-        data = args.dates
+        if '-p' in sys.argv or '--preview' in sys.argv:
+            pve = args.preview or 7
+        else:
+            pve = 0
+        data = args.data_file
+        comm = args.comments
     else:
         dates = (now(),)
-        pvs = True
+        pve = 7
         data = "~/.cal.dat"
+        comm = False
+    out = ls(bdt=dates, pve=pve, fp=os.path.expanduser(data), comm=comm)
     print ''
-    ls(bdt=dates, pvs=pvs, fp=os.path.expanduser(data))
+    print out
     print ''
 
