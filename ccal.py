@@ -208,7 +208,10 @@ class Entry(object):
                 pass
         self.desc = self.desc.replace("\{", "{").replace("\}", "}")
         # week/day
-        fw = dt.datetime(yyyy, mm, 1)
+        try:
+            fw = dt.datetime(yyyy, mm, 1)
+        except:
+            return line
         # every week
         if exp and w == 0 and d != 0:
             entries = []
