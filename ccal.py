@@ -26,7 +26,7 @@ Python implementation to process ccal style ~/.cal.dat files"""
 # THE SOFTWARE.
 
 ## TODO
-# Floating dates per 'YYYY MM DD WD !D'?
+# Floating dates per 'YYYY MM DD WD +D'?
 # Implement @actions properly
 # @action ls -- list (with comments)
 # @action add -- new entry (with comment)
@@ -283,7 +283,10 @@ class Entries(list):
         self.bdt = bdt
         self.years = [d.year for d in bdt]
         self.months = [d.month for d in bdt]
-        self.days = [d.day for d in bdt]
+        self.days = []
+        if bdt[0].day != 1 or (now().day == 1 or '1' in sys.argv or '01' in \
+           sys.argv):
+            self.days = [d.day for d in bdt]
         self.comm = comm
 
         # It's necessary to first create a whole list of entries because
@@ -313,7 +316,7 @@ class Entries(list):
             e = ''
             if self.comm and entry.comm:
                 e = entry.full().replace('\n', '%s\n' % fmt.r)
-            if entry['day'] in self.days and now().month in self.months:
+            if entry['day'] in self.days and entry['month'] in self.months:
                 if e:
                     e = e.replace('        #',
                                   '        %s#' % fmt.bf('red', 'reset'))
@@ -337,7 +340,10 @@ class Calendar(object):
     def __init__(self, bdt=now(), hl=(dt.date.today(),)):
         self.year = bdt.year
         self.month = bdt.month
-        self.hl = hl
+        self.hl = ()
+        if hl[0].day != 1 or (now().day == 1 or '1' in sys.argv or '01' in \
+           sys.argv):
+            self.hl = hl
 
     def __repr__(self):
         ls = [" %s" % l for l in cal.month(self.year, self.month).split('\n')]
@@ -353,7 +359,8 @@ class Calendar(object):
                 continue
             ls[i] = "%s%s" % (fmt.bf('blue', 'white'), ls[i])
             su = ls[i][-3:][:2]
-            if self.hl[0].year == self.year and self.hl[0].month == self.month:
+            if len(self.hl) > 0 and self.hl[0].year == self.year and \
+               self.hl[0].month == self.month:
                 for day in self.hl:
                     dstr = ' %s ' % day.strftime("%e")
                     # Replace with 1 more char than necessary so we can
