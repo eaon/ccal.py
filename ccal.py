@@ -160,16 +160,24 @@ def ordinal(value):
     return ordval
 
 class Entry(object):
+    """Calender Entry
+
+    In some cases when we instantiate an Entry, it turns out it's not an
+    entry but a comment of a previous one. In this case, we're just going
+    to return the line it was instanciated with instead.
+
+    If an entry is dynamically generated and would apply to more than one
+    day, it might be expanded, in which case a list with multiple entries
+    is returned.
+
+    >>> Entry("2012 12 11 00 Foo")
+    Tue 11: Foo
+    >>> Entry("-999 -9 11 05 Bar")
+    [Sun 16: Bar, Fri 21: Bar, Wed 26: Bar, Mon 31: Bar]
+    >>> Entry("Hung out with Sven Guckes in Berlin")
+    'Hung out with Sven Guckes in Berlin'
+    """
     def __new__(cls, line='', bdt=now(), edt=None, exp=True):
-        """Calender Entry
-
-        In some cases when we instantiate an Entry, it turns out it's not an
-        entry but a comment of a previous one. In this case, we're just going
-        to return the line it was instanciated with instead.
-
-        In the future, this might return multiple Entry objects if a dynamic
-        date occures more than once a month.
-        """
         self = super(Entry, cls).__new__(cls)
         self.comm = ''
         line = line.strip()
