@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """ccal.py 0.2
 
 Python implementation to process ccal style ~/.cal.dat files"""
@@ -147,15 +147,15 @@ def ordinal(value):
 
     if value % 100//10 != 1:
         if value % 10 == 1:
-            ordval = u"%d%s" % (value, "st")
+            ordval = "%d%s" % (value, "st")
         elif value % 10 == 2:
-            ordval = u"%d%s" % (value, "nd")
+            ordval = "%d%s" % (value, "nd")
         elif value % 10 == 3:
-            ordval = u"%d%s" % (value, "rd")
+            ordval = "%d%s" % (value, "rd")
         else:
-            ordval = u"%d%s" % (value, "th")
+            ordval = "%d%s" % (value, "th")
     else:
-        ordval = u"%d%s" % (value, "th")
+        ordval = "%d%s" % (value, "th")
 
     return ordval
 
@@ -280,8 +280,8 @@ class Entry(object):
                 ' # '.join(self.comm.split("\n")).strip().replace(" #","\n #"))
         return nextTo(self.dt.strftime("%a %e:"), both)
     
-    def __cmp__(self, other):
-        return cmp(self.dt, other.dt)
+    def __lt__(self, other):
+        return self.dt < other.dt
 
 class Entries(list):
     def __init__(self, fp=os.path.expanduser('~/.cal.dat'), bdt=(now(),),
@@ -344,6 +344,9 @@ class Entries(list):
         list.append(self, obj)
         self.sort()
 
+    def days(self):
+        return [entry.day for entry in self]
+
 class Calendar(object):
     def __init__(self, bdt=now(), hl=(dt.date.today(),)):
         self.year = bdt.year
@@ -356,7 +359,7 @@ class Calendar(object):
     def __repr__(self):
         ls = [" %s" % l for l in cal.month(self.year, self.month).split('\n')]
         ls = ls[:-1]
-        for i in xrange(len(ls)):
+        for i in range(len(ls)):
             while len(ls[i]) < 22:
                 ls[i] += ' '
             if i == 0:
@@ -397,10 +400,10 @@ def nextTo(one, two):
     two = two.split('\n')
     merge = ""
     padding = len(fmt.c(one[0]))
-    [one.append(' '*padding) for i in xrange(len(two)-len(one))]
-    [two.append('') for i in xrange(len(one)-len(two))]
+    [one.append(' '*padding) for i in range(len(two)-len(one))]
+    [two.append('') for i in range(len(one)-len(two))]
     if len(one) == len(two):
-        for i in xrange(len(one)):
+        for i in range(len(one)):
              merge += "%s %s\n" % (one[i], two[i])
     return merge.strip()
 
@@ -487,7 +490,7 @@ if __name__ == '__main__':
         exp = True
     out = ls(bdt=dates, pve=pve, fp=os.path.expanduser(data), comm=comm,
              exp=exp)
-    print ''
-    print out
-    print ''
+    print('')
+    print(out)
+    print('')
 
