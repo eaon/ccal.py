@@ -26,17 +26,71 @@ Python implementation to process ccal style ~/.cal.dat files"""
 # THE SOFTWARE.
 
 ## TODO
-# Floating dates per 'YYYY MM DD WD +D'?
-# Implement @actions properly
-# @action ls -- list (with comments)
-# @action add -- new entry (with comment)
-# @action search -- search for entries mentioning $value (3 month range?)
-# Relative date parsing '(next) %d/m/y', 'last %d/m/y', 'tomorrow',
-#  'yesterday', '4 %d/m/y ago', '(in) 2 %d/m/y'
-# @action del -- delete entry (auto complete?)
-# @action ia -- interactive mode (automatically update screen)
-# ~/.ccalpy.rc ?
-# Include legacy .dates format via regexp?
+# -------------------------------------------------
+# extend notation for date ranges:
+# "YYYY MM DD WD +D" - the "+D" means "plus D days",
+# starting on YYYY-MM-DD and continuing to YYYY-MM-(DD+D).
+# example: "2012 12 27 00 +3 29C3" then expands to this:
+# 2012 12 27 00 29C3
+# 2012 12 28 00 29C3
+# 2012 12 29 00 29C3
+# 2012 12 30 00 29C3
+#
+# "the congress" is taking place on the same dates every year,
+# so even the yearly entries should take a "+D" argument:
+# -999 12 27 00 +3 Chaos Communication Congress
+#
+# allow relative dates, some arithmetic:
+# 'tomorrow' and 'yesterday',
+# (in) [+-] N [days/months/years] (ago)
+# (in)      N [days/months/years]
+#           N [days/months/years]  ago
+# examples:
+# in 4d, in 3m, in 2y -- 4d ago, 3m ago, 2y ago
+# "in 3mon 1 year 2d"
+#
+# WARNING! watch for spaces and abbreviated time names!
+# allow multiple occurrences of times:
+# example: "1y 3m 2d 2y 1m 4d" -> "3y 4m 6d"
+# (probably wont be used very often ;)
+#
+# add "ia" (interactive mode) which automatically updates the screen,
+# possibly with some paging.
+#
+# setup file: ~/.ccalpy.rc ?
+# Include legacy .dates format via regexp? ("legacy dates"? huh?)
+#
+# arguments/actions:
+# general: Implement @actions properly
+#
+# add "add" to add new entries and comments.
+# example: ccal add TODO
+#
+# add "del" to delete entries
+# example: TODO
+# (maybe add this with auto completion?)
+#
+# add "search" to search for entries including foo within date ranges
+# example: search party vienna 2012-12-21 2013-01-05
+#
+# input+output:
+# add output for ical (ICS files)
+# allow data from stdin
+# allow multiple data files
+# allow short names and numbers for month
+#
+# color:
+# add colors for each weekday
+# add color  for time ranges
+# add color  for places (@placename)
+# add color  for URLs
+#
+# show color when COLORTERM is set
+# options:
+# add option to suppress repetitive events
+# add option to suppress calendar month view
+# add support for UTF-8
+# -------------------------------------------------
 
 import datetime as dt
 import calendar as cal
