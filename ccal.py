@@ -279,8 +279,7 @@ class Entry(object):
             entries = []
             for i in range(5):
                 n = dt.timedelta(days=d-fw.isoweekday()+7*i)
-                dd = (fw + n).day
-                self.dt = dt.datetime(yyyy, mm, dd)
+                self.dt = fw + n
                 if self.dt.month == bdt.month:
                     entries.append(Entry(self.desc, bdt, self.dt))
             return entries
