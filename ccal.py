@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ccal.py 0.2
 
-Python implementation to process ccal style ~/.cal.dat files"""
+Python implementation processing and extending ccal style ~/.cal.dat files"""
 
 # License (MIT)
 #
@@ -58,17 +58,16 @@ Python implementation to process ccal style ~/.cal.dat files"""
 # possibly with some paging.
 #
 # setup file: ~/.ccalpy.rc ?
-# Include legacy .dates format via regexp? ("legacy dates"? huh?)
 #
 # arguments/actions:
 # general: Implement @actions properly
 #
 # add "add" to add new entries and comments.
-# example: ccal add TODO
+# example: ccal add 3d -- Three days from when this entry was created
 #
-# add "del" to delete entries
+# add "del" to delete entries (with auto completion)
+# del should behave like ['foo'].pop() i.e. return object before removal
 # example: TODO
-# (maybe add this with auto completion?)
 #
 # add "search" to search for entries including foo within date ranges
 # example: search party vienna 2012-12-21 2013-01-05
@@ -87,9 +86,7 @@ Python implementation to process ccal style ~/.cal.dat files"""
 #
 # show color when COLORTERM is set
 # options:
-# add option to suppress repetitive events
 # add option to suppress calendar month view
-# add support for UTF-8
 # -------------------------------------------------
 
 import datetime as dt
@@ -99,7 +96,7 @@ import sys
 import os
 import argparse
 
-now = dt.datetime.now
+today = dt.date.today
 
 class fmt(dict):
     """Easy ANSI formatting
@@ -126,8 +123,8 @@ class fmt(dict):
         self['b'] = { 'black': 40, 'red': 41, 'green': 42, 'yellow': 43,
                       'blue': 44, 'magenta': 45, 'cyan': 46, 'white': 47,
                       'reset': 49 }
-        self['s'] = { 'normal': 22, 'bright': 1, 'dim': 2, 'reset': 0,
-                      'transparent': 8 }
+        self['s'] = { 'normal': '22;23;24;25', 'bright': 1, 'nobright': '22',
+                      'dim': 2, 'reset': 0, 'transparent': 8, 'underline': 4 }
         self.colors = self.has_colors(sys.stdout)
 
     def has_colors(self, stream):
@@ -231,7 +228,7 @@ class Entry(object):
     >>> Entry("Hung out with Sven Guckes in Berlin")
     'Hung out with Sven Guckes in Berlin'
     """
-    def __new__(cls, line='', bdt=now(), edt=None, exp=True):
+    def __new__(cls, line='', bdt=today(), edt=None, exp=True):
         self = super(Entry, cls).__new__(cls)
         self.comm = ''
         line = line.strip()
@@ -271,7 +268,7 @@ class Entry(object):
         self.desc = self.desc.replace("\{", "{").replace("\}", "}")
         # week/day
         try:
-            fw = dt.datetime(yyyy, mm, 1)
+            fw = dt.date(yyyy, mm, 1)
         except:
             return line
         # every week
@@ -290,20 +287,20 @@ class Entry(object):
             dd = (fw + n).day
         # every day, but show only once
         if exp and w == 0 and d == 0:
-            dd = now().day
+            dd = today().day
         # specific day/week
         elif exp and dd < 1 and w != -1 and d != 0 and fw.isoweekday() > d:
             n = dt.timedelta(days=7*w)
             w = fw + n
         elif exp and dd < 1 and w != 0:
-            w = dt.datetime(yyyy, mm, (w*7)-6 if w > 0 else bdt.day)
+            w = dt.date(yyyy, mm, (w*7)-6 if w > 0 else bdt.day)
         if exp and w != 9 and dd < 1 and d != 0:
             d = dt.timedelta(days=d-w.isoweekday())
             dd = (w + d).day
         # periodic
         if exp and w == -1 and isinstance(d, int) and dd > 0 and d > 1:
             entries = []
-            self.dt = dt.datetime(yyyy, mm, dd)
+            self.dt = dt.date(yyyy, mm, dd)
             while self.dt.month <= bdt.month and self.dt.year <= bdt.year:
                 self.dt = self.dt + dt.timedelta(days=d)
                 if self.dt.month == bdt.month and self.dt.year == bdt.year:
@@ -311,11 +308,11 @@ class Entry(object):
             return entries
         # daily, but show only once
         if exp and w == -1 and isinstance(d, int) and dd > 0 and d == 1 and \
-           bdt > dt.datetime(yyyy, mm, dd):
+           bdt > dt.date(yyyy, mm, dd):
             dd = bdt.day
         # XXX dirty stuff, should probably stop earlier?
         try:
-            self.dt = dt.datetime(yyyy, mm, dd)
+            self.dt = dt.date(yyyy, mm, dd)
             return self
         except:
             return
@@ -337,7 +334,7 @@ class Entry(object):
         return self.dt < other.dt
 
 class Entries(list):
-    def __init__(self, fp=os.path.expanduser('~/.cal.dat'), bdt=(now(),),
+    def __init__(self, fp=os.path.expanduser('~/.cal.dat'), bdt=(today(),),
                  exp=True, comm=False):
         list.__init__(self)
         self.caldat = open(fp)
@@ -345,7 +342,7 @@ class Entries(list):
         self.years = [d.year for d in bdt]
         self.months = [d.month for d in bdt]
         self.days = []
-        if bdt[0].day != 1 or (now().day == 1 or '1' in sys.argv or '01' in \
+        if bdt[0].day != 1 or (today().day == 1 or '1' in sys.argv or '01' in \
            sys.argv):
             self.days = [d.day for d in bdt]
         self.comm = comm
@@ -384,6 +381,20 @@ class Entries(list):
                 out += "%s*%s%s%s%s" % (fmt.s('transparent'), fmt.r,
                                         fmt.bf('red', 'reset'), e or entry,
                                         fmt.r)
+            # If we're highlighting today, highlight tomorrow as well, but not
+            # if it's next month
+            elif self.years == [today().year] and \
+                 self.months == [today().month] and \
+                 self.days == [today().day] and \
+                 entry['month'] == today().month and entry['month'] in \
+                 self.months and entry['day'] == today().day+1 and \
+                 entry['day']-1 in self.days:
+                if e:
+                    e = e.replace('        #',
+                                  '        %s#' % fmt.bf('yellow', 'reset'))
+                out += "%s*%s%s%s%s" % (fmt.s('transparent'), fmt.r,
+                                        fmt.bf('yellow', 'reset'), e or entry,
+                                        fmt.r)
             else:
                 if e:
                     e = e.replace('        #',
@@ -397,53 +408,90 @@ class Entries(list):
         list.append(self, obj)
         self.sort()
 
-    def days(self):
-        return [entry.day for entry in self]
-
-class Calendar(object):
-    def __init__(self, bdt=now(), hl=(dt.date.today(),)):
-        self.year = bdt.year
-        self.month = bdt.month
+class Calendar(dict):
+    def __init__(self, bdt=today(), hl=(today(),), entries=[]):
+        dict.__init__(self)
+        self.appointments = []
+        for entry in entries:
+            self.appointments.append(entry.dt.day)
+        self._keys = []
+        self.bdt = bdt
         self.hl = ()
-        if hl[0].day != 1 or (now().day == 1 or '1' in sys.argv or '01' in \
+        self.bd = [str(entry.dt.day) for entry in entries]
+        if hl[0].day != 1 or (today().day == 1 or '1' in sys.argv or '01' in \
            sys.argv):
             self.hl = hl
+        wd, dy = cal.monthrange(self.bdt.year, self.bdt.month)
+        for day in range(1, dy+1):
+            self[day] = []
+            if cal.weekday(self.bdt.year, self.bdt.month, day) == 6:
+                hl = dt.date(self.bdt.year, self.bdt.month, day) in self.hl
+                self.mark(day, fmt.fs('white' if hl else 'magenta', 'bright'),
+                          fmt.fs('white', 'nobright' if hl else 'normal'))
+
+    def __setitem__(self, key, item):
+        dict.__setitem__(self, key, item)
+        self._keys.append(key)
+
+    def keys(self):
+        return self._keys
+
+    def values(self):
+        return map(self.get, self._keys)
+
+    def mark(self, day, pre, post):
+        self[day].insert(0, pre)
+        self[day].append(post)
+
+    def dayr(self, day):
+        half = int(len(self[day])/2)
+        ds = str(day) if len(str(day)) > 1 else " %s" % day
+        if half:
+            return "%s%s%s" % ("".join(self[day][:half]), ds,
+                               "".join(self[day][half:]))
+        else:
+            return ds
 
     def __repr__(self):
-        ls = [" %s" % l for l in cal.month(self.year, self.month).split('\n')]
-        ls = ls[:-1]
-        for i in range(len(ls)):
-            while len(ls[i]) < 22:
-                ls[i] += ' '
-            if i == 0:
-                ls[i] = "%s%s" % (fmt.fb('black', 'green'), ls[i])
-            elif i == 1:
-                ls[i] = "%s%s" % (fmt.fb('blue', 'cyan'), ls[i])
-            if i < 2:
-                continue
-            ls[i] = "%s%s" % (fmt.bf('blue', 'white'), ls[i])
-            su = ls[i][-3:][:2]
-            if len(self.hl) > 0 and self.hl[0].year == self.year and \
-               self.hl[0].month == self.month:
-                for day in self.hl:
-                    dstr = ' %s ' % day.strftime("%e")
-                    # Replace with 1 more char than necessary so we can
-                    # identify continous matches
-                    dhls = "<%s> " % dstr[1:-1]
-                    ls[i] = ls[i].replace(dstr, dhls)
-                ls[i] = ls[i].replace("><", " ")
-                ls[i] = ls[i].replace("<", "%s<" % fmt.bf('red', 'reset'))
-                ls[i] = ls[i].replace("> ", ">%s" % fmt.bf('blue', 'white'))
-                # Highlighted Sundays are bright/bold
-                ls[i] = ls[i].replace("%s>" % su, "%s%s%s>" % \
-                                      (fmt.bfs('red', 'reset', 'bright'),
-                                      su, fmt.s('normal')))
-            # Sundays are magenta and bright/bold
-            ls[i] = ("%s%s%s " % \
-                     (fmt.fs('magenta', 'bright'), su,
-                      fmt.fs('white',
-                             'normal'))).join(ls[i].rsplit("%s " % su, 1))
-        return "%s%s" % (('%s\n' % fmt.r).join(ls), fmt.r)
+        for date in self.hl:
+            self.mark(date.day, "%s<" % fmt.bf("red", "reset"),
+                      ">%s" % fmt.bf('blue', 'white'))
+        for day in self.appointments:
+            self.mark(day, fmt.s('underline'), fmt.s('normal'))
+        wd, dy = cal.monthrange(self.bdt.year, self.bdt.month)
+        my = self.bdt.strftime("%B %Y")
+        out = " "*int((22-len(my))/2) + my
+        while len(out) < 22: out += " "
+        out = "%s%s%s\n" % (fmt.fb('black', 'green'), out, fmt.r)
+        # XXX How 'bout letting the week start on Sunday, right 'merica?
+        ds = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+        out += "%s %s %s\n" % (fmt.fb('blue', 'cyan'), " ".join(ds), fmt.r)
+        m = []
+        for i in range(wd): m.append("  ")
+        for day in self.keys():
+            m.append(self.dayr(day))
+        ws = len(m)/7
+        ws = int(ws) + 1 if int(ws) < ws else int(ws)
+        for spf in range(7-len(m[(ws-1)*7:7+(ws-1)*7])):
+            m.append("  ")
+        for week in range(ws):
+            out += "%s " % fmt.bf('blue', 'white')
+            for day in m[week*7:7+week*7]:
+                if "<" in day: out += day
+                else: out += "-%s-" % day
+            if fmt.clear(out)[-1] != ">":
+                out += " "
+            out += "%s\n" % fmt.r
+        out = out.replace("--", " ")
+        out = out.replace("-", "")
+        out = out.replace(">%s%s<" % (fmt.bf('blue', 'white'),
+                                      fmt.bf('red', 'reset')), " ")
+        out = out.replace("%s %s%s" % (fmt.bf('blue', 'white'),
+                                       fmt.s('underline'),
+                                       fmt.bf('red', 'reset')),
+                          "%s%s" % (fmt.s('underline'),
+                                    fmt.bf('red', 'reset')))
+        return out.rstrip()
 
     def split(self, char):
         return repr(self).split(char)
@@ -472,7 +520,7 @@ def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False,
                         '\n'.join(pvs.split('\n')[:pve]))
     else:
         pvs = ""
-    cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (bdt[0],))
+    cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (bdt[0],), entries)
     return nextTo(cal, repr(entries)+pvs)
 
 if __name__ == '__main__':
@@ -508,22 +556,22 @@ if __name__ == '__main__':
         #p_ia = sub_p.add_parser('ia', help='Interactive mode')
         args = parser.parse_args()
         if not args.date:
-            args.date = (now(),)
+            args.date = (today(),)
         elif len(args.date) == 1:
-            args.date = (dt.datetime(int(args.date[-1]), now().month, 1),)
+            args.date = (dt.date(int(args.date[-1]), today().month, 1),)
         elif len(args.date) == 2:
             try:
                 args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date),
-                             "%d %B %Y"),)
+                                                  "%d %B %Y").date(),)
             except:
                 args.date = (dt.datetime.strptime("1 %s" % " ".join(args.date),
-                             "%d %b %Y"),)
+                                                  "%d %b %Y").date(),)
         elif len(args.date) > 2:
             month = args.date[-2:][0]
             year = args.date[-2:][1]
             args.date = tuple([dt.datetime.strptime("%s %s %s" % \
                                                     (day, month, year),
-                                                    "%d %B %Y") \
+                                                    "%d %B %Y").date() \
                                for day in args.date[:-2]])
         if args.c:
             fmt.colors = args.c
@@ -536,7 +584,7 @@ if __name__ == '__main__':
         comm = args.comments
         exp = args.noperiodic
     else:
-        dates = (now(),)
+        dates = (today(),)
         pve = 7
         data = "~/.cal.dat"
         comm = False
