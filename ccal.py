@@ -54,13 +54,13 @@ Python implementation processing and extending ccal style ~/.cal.dat files"""
 # example: "1y 3m 2d 2y 1m 4d" -> "3y 4m 6d"
 # (probably wont be used very often ;)
 #
-# add "ia" (interactive mode) which automatically updates the screen,
-# possibly with some paging.
-#
 # setup file: ~/.ccalpy.rc ?
 #
 # arguments/actions:
-# general: Implement @actions properly
+# general: Implement @actions properly (XXX OH MY GOD IT'S SO UGLY RIGHT NOW)
+#
+# add "ia" (interactive mode) which automatically updates the screen,
+# possibly with some paging.
 #
 # add "add" to add new entries and comments.
 # example: ccal add 3d -- Three days from when this entry was created
@@ -74,7 +74,7 @@ Python implementation processing and extending ccal style ~/.cal.dat files"""
 #
 # input+output:
 # add output for ical (ICS files)
-# allow multiple data files
+# allow multiple data files -- use $(cat cal1 cal2 cal3 | ./ccal.py) ?
 # allow short names and numbers for month
 #
 # color:
@@ -366,14 +366,26 @@ class Entries(list):
 
         self.sort()
 
-    def limit(self, limit=24):
+    def limit(self, limit="24"):
         """Limit range of entries from today to a specific count"""
+        days = False
+        try:
+            days = True if "d" in limit else False
+            limit = int(limit[:-1])
+        except:
+            limit = int(limit)
         entries = Entries()
         for i in range(len(self)):
             if self[0].dt < today():
                  del self[0]
-        while len(self) > limit:
-            self.pop()
+        if days:
+            limit = today() + dt.timedelta(days=limit)
+            for i in range(len(self)):
+                if self[-1].dt > limit:
+                    del self[-1]
+        else:
+            while len(self) > limit:
+                self.pop()
 
     def __repr__(self):
         out = ""
@@ -547,10 +559,10 @@ if __name__ == '__main__':
         parser = argparse.ArgumentParser(parents=[parser])
         sub_p = parser.add_subparsers(help='actions')
         p_ls = sub_p.add_parser('ls', help='list calendar entries')
-        p_ls.add_argument("-l", "--limit", type=int, nargs="?", default=24,
+        p_ls.add_argument("-l", "--limit", nargs="?", default="24",
                           metavar="N",
-                          help="limit event output N days from today " + \
-                               "(default, if set: 24)")
+                          help="limit event output to N events from today " + \
+                               "or Nd days from today (default, if set: 24)")
         p_ls.add_argument("-p", "--preview", type=int, nargs="?", default=7,
                           metavar="N",
                           help="preview next month's non-periodic entries " + \
