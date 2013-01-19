@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ccal.py 0.2
+"""ccal.py 0.3
 
 Python implementation processing and extending ccal style ~/.cal.dat files"""
 
@@ -74,7 +74,6 @@ Python implementation processing and extending ccal style ~/.cal.dat files"""
 #
 # input+output:
 # add output for ical (ICS files)
-# allow data from stdin
 # allow multiple data files
 # allow short names and numbers for month
 #
@@ -84,7 +83,6 @@ Python implementation processing and extending ccal style ~/.cal.dat files"""
 # add color  for places (@placename)
 # add color  for URLs
 #
-# show color when COLORTERM is set
 # options:
 # add option to suppress calendar month view
 # -------------------------------------------------
@@ -134,6 +132,8 @@ class fmt(dict):
         if not stream.isatty():
             return False # auto color only on TTYs
         try:
+            if "COLORTERM" in os.environ or "color" in os.environ["TERM"]:
+                return True
             import curses
             curses.setupterm()
             return curses.tigetnum("colors") > 2
@@ -184,9 +184,7 @@ class fmt(dict):
 
     def format(self, colors):
         """Format ANSI escape sequence"""
-        if self.colors:
-            return '\033[%sm' % ";".join([str(color) for color in colors])
-        return ''
+        return '\033[%sm' % ";".join([str(color) for color in colors])
 
 fmt = fmt() # We really don't need more than one instance here.
 
@@ -337,7 +335,7 @@ class Entries(list):
     def __init__(self, fp=os.path.expanduser('~/.cal.dat'), bdt=(today(),),
                  exp=True, comm=False):
         list.__init__(self)
-        self.caldat = open(fp)
+        self.caldat = open(fp) if isinstance(fp, str) else fp
         self.bdt = bdt
         self.years = [d.year for d in bdt]
         self.months = [d.month for d in bdt]
@@ -367,6 +365,15 @@ class Entries(list):
                 list.append(self, entry)
 
         self.sort()
+
+    def limit(self, limit=24):
+        """Limit range of entries from today to a specific count"""
+        entries = Entries()
+        for i in range(len(self)):
+            if self[0].dt < today():
+                 del self[0]
+        while len(self) > limit:
+            self.pop()
 
     def __repr__(self):
         out = ""
@@ -479,7 +486,7 @@ class Calendar(dict):
             for day in m[week*7:7+week*7]:
                 if "<" in day: out += day
                 else: out += "-%s-" % day
-            if fmt.clear(out)[-1] != ">":
+            if fmt.c(out)[-1] != ">":
                 out += " "
             out += "%s\n" % fmt.r
         out = out.replace("--", " ")
@@ -509,7 +516,7 @@ def nextTo(one, two):
     return merge.strip()
 
 def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False,
-       exp=True):
+       exp=True, eli=0):
     entries = Entries(bdt=bdt, fp=fp, comm=comm, exp=exp)
     pvs = ""
     if pve > 0:
@@ -521,6 +528,8 @@ def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False,
     else:
         pvs = ""
     cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (bdt[0],), entries)
+    if eli:
+        entries.limit(eli)
     return nextTo(cal, repr(entries)+pvs)
 
 if __name__ == '__main__':
@@ -538,6 +547,10 @@ if __name__ == '__main__':
         parser = argparse.ArgumentParser(parents=[parser])
         sub_p = parser.add_subparsers(help='actions')
         p_ls = sub_p.add_parser('ls', help='list calendar entries')
+        p_ls.add_argument("-l", "--limit", type=int, nargs="?", default=24,
+                          metavar="N",
+                          help="limit event output N days from today " + \
+                               "(default, if set: 24)")
         p_ls.add_argument("-p", "--preview", type=int, nargs="?", default=7,
                           metavar="N",
                           help="preview next month's non-periodic entries " + \
@@ -576,6 +589,10 @@ if __name__ == '__main__':
         if args.c:
             fmt.colors = args.c
         dates = args.date
+        if '-l' in sys.argv or '--limit' in sys.argv:
+            eli = args.limit or 24
+        else:
+            eli = 0
         if '-p' in sys.argv or '--preview' in sys.argv:
             pve = args.preview or 7
         else:
@@ -589,9 +606,15 @@ if __name__ == '__main__':
         data = "~/.cal.dat"
         comm = False
         exp = True
-    out = ls(bdt=dates, pve=pve, fp=os.path.expanduser(data), comm=comm,
-             exp=exp)
+        eli = 0
+    fp = os.path.expanduser(data)
+    if not sys.stdin.isatty():
+        fp = sys.stdin
+    out = ls(bdt=dates, pve=pve, fp=fp, comm=comm, exp=exp, eli=eli)
     print('')
-    print(out)
+    if fmt.colors:
+        print(out)
+    else:
+        print(fmt.c(out))
     print('')
 
