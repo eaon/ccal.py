@@ -86,6 +86,18 @@ Python implementation processing and extending ccal style ~/.cal.dat files"""
 # options:
 # add option to suppress calendar month view
 # -------------------------------------------------
+# Poor persons ./ccal.py add
+#
+# function ccaladd {
+#     DATE=$(date -d "$1" +"%Y %m %d")
+#     if [[ $? -eq 0 ]]; then
+#         DATE=$(echo "$DATE 00 $(python -c "import sys; print ' '.join(sys.argv[2:])" $@)")
+#         echo $DATE >> ~/.cal.dat
+#         ccal.py
+#         echo \"$DATE\" added
+#     fi
+# }
+#
 
 import datetime as dt
 import calendar as cal
