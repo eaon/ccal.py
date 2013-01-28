@@ -471,8 +471,9 @@ class Calendar(dict):
         return map(self.get, self._keys)
 
     def mark(self, day, pre, post):
-        self[day].insert(0, pre)
-        self[day].append(post)
+        if not pre in self[day] and not post in self[day]:
+            self[day].insert(0, pre)
+            self[day].append(post)
 
     def dayr(self, day):
         half = int(len(self[day])/2)
