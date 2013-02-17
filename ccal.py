@@ -295,6 +295,11 @@ class Entry(object):
             fw = dt.datetime(yyyy, mm, cal.monthrange(yyyy, mm)[1])
             n = dt.timedelta(days=d-fw.isoweekday())
             dd = (fw + n).day
+        # If this date doesn't exist within this month then there is probably
+        # no week starting with that day
+        if exp and dd < 1 and w != 0 and \
+             (w*7)-6 > cal.monthrange(yyyy, mm)[1]:
+            return
         # every day, but show only once
         if exp and w == 0 and d == 0:
             dd = today().day
