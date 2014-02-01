@@ -354,19 +354,28 @@ class Entries(list):
         list.__init__(self)
         self.caldat = open(fp) if isinstance(fp, str) else fp
         self.bdt = bdt
-        self.years = [d.year for d in bdt]
-        self.months = [d.month for d in bdt]
+        self.years = [d.year for d in bdt[0 if hasattr(bdt[0],
+                                                       'year') else 1:]]
+        self.months = [d.month for d in bdt[0 if hasattr(bdt[0],
+                                                         'month') else 1:]]
         self.days = []
-        if bdt[0].day != 1 or (today().day == 1 or '1' in sys.argv or '01' in \
-           sys.argv):
-            self.days = [d.day for d in bdt]
+        # If our first date is None, skip highlighting
+        if bdt[0] == None:
+            pass
+        elif (bdt[0] and hasattr(bdt[0], 'day') and bdt[0].day != 1) or \
+           (today().day == 1 or '1' in sys.argv or '01' in sys.argv):
+            for d in bdt:
+                if hasattr(d, 'day'):
+                    self.days.append(d.day)
+            #self.days = [d.day if hasattr(d, 'day') else None for d in bdt]
         self.comm = comm
 
         # It's necessary to first create a whole list of entries because
         # otherwise comments would end up on wrong entries ...
         entries = []
         for line in self.caldat:
-            entry = Entry(line, bdt[0], exp=exp)
+            entry = Entry(line, bdt[0 if hasattr(bdt[0], 'day') else 1],
+                          exp=exp)
             if isinstance(entry, Entry):
                 entries.append(entry) # self.append sorts, quicker that way
             elif isinstance(entry, list):
@@ -406,6 +415,7 @@ class Entries(list):
 
     def __repr__(self):
         out = ""
+        tmw = today() + dt.timedelta(days=1)
         for entry in self:
             e = ''
             if self.comm and entry.comm:
@@ -417,14 +427,9 @@ class Entries(list):
                 out += "%s*%s%s%s%s" % (fmt.s('transparent'), fmt.r,
                                         fmt.bf('red', 'reset'), e or entry,
                                         fmt.r)
-            # If we're highlighting today, highlight tomorrow as well, but not
-            # if it's next month
-            elif self.years == [today().year] and \
-                 self.months == [today().month] and \
-                 self.days == [today().day] and \
-                 entry['month'] == today().month and entry['month'] in \
-                 self.months and entry['day'] == today().day+1 and \
-                 entry['day']-1 in self.days:
+            # If we're highlighting today, highlight tomorrow as well
+            # XXX How do we know we are we highlighting day? Needs better check
+            elif entry['day'] == tmw.day and entry['month'] == tmw.month:
                 if e:
                     e = e.replace('        #',
                                   '        %s#' % fmt.bf('yellow', 'reset'))
@@ -523,11 +528,15 @@ class Calendar(dict):
         out = out.replace("-", "")
         out = out.replace(">%s%s<" % (fmt.bf('blue', 'white'),
                                       fmt.bf('red', 'reset')), " ")
+        out = out.replace("%s %s<" % (fmt.bf('blue', 'white'),
+                                      fmt.bf('red', 'reset')),
+                          "%s<" % fmt.bf('red', 'reset'))
         out = out.replace("%s %s%s" % (fmt.bf('blue', 'white'),
                                        fmt.s('underline'),
                                        fmt.bf('red', 'reset')),
                           "%s%s" % (fmt.s('underline'),
                                     fmt.bf('red', 'reset')))
+        # out = out.replace(">%s%s%s<"
         return out.rstrip()
 
     def split(self, char):
@@ -551,7 +560,7 @@ def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False,
     pvs = ""
     if pve > 0:
         pvd = bdt[0] + dt.timedelta(days=-(bdt[0].day-2)+30)
-        pvs = repr(Entries(bdt=(pvd,), fp=fp, exp=False))
+        pvs = repr(Entries(bdt=(None,pvd), fp=fp, exp=False))
     if pvs:
         pvs = "%s%s" % (pvd.strftime("\n %B --\n"),
                         '\n'.join(pvs.split('\n')[:pve]))
