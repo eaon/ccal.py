@@ -88,16 +88,6 @@ Python implementation processing and extending ccal style ~/.cal.dat files"""
 # -------------------------------------------------
 # Poor persons ./ccal.py add
 #
-# function ccaladd {
-#     DATE=$(date -d "$1" +"%Y %m %d")
-#     if [[ $? -eq 0 ]]; then
-#         DATE=$(echo "$DATE 00 $(python -c "import sys; print ' '.join(sys.argv[2:])" $@)")
-#         echo $DATE >> ~/.cal.dat
-#         ccal.py
-#         echo \"$DATE\" added
-#     fi
-# }
-#
 
 import datetime as dt
 import calendar as cal
@@ -607,7 +597,7 @@ if __name__ == '__main__':
         p_add.add_argument("comment", nargs="?")
         #p_ia = sub_p.add_parser('ia', help='Interactive mode')
         args = parser.parse_args()
-        if not args.date:
+        if not 'date' in args or not args.date:
             args.date = (today(),)
         elif len(args.date) == 1:
             args.date = (dt.date(int(args.date[-1]), today().month, 1),)
@@ -637,8 +627,14 @@ if __name__ == '__main__':
         else:
             pve = 0
         data = args.data_file
-        comm = args.comments
-        exp = args.noperiodic
+        if 'comments' in args:
+            comm = args.comments
+        else:
+            comm = False
+        if 'noperiodic' in args:
+            exp = args.noperiodic
+        else:
+            exp = True
     else:
         dates = (today(),)
         pve = 7
@@ -646,7 +642,11 @@ if __name__ == '__main__':
         comm = False
         exp = True
         eli = 0
-    fp = os.path.expanduser(data)
+    # Override file data with stuff from stdin
+    if sys.stdin.isatty():
+        fp = os.path.expanduser(data)
+    else:
+        fp = sys.stdin
     if not sys.stdin.isatty():
         fp = sys.stdin
     out = ls(bdt=dates, pve=pve, fp=fp, comm=comm, exp=exp, eli=eli)
