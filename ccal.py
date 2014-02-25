@@ -383,10 +383,9 @@ class Entries(list):
 
         # ... hence we filter out entries later
         for entry in entries:
-            if every == False and entry['year'] in self.years and \
-               entry['month'] in self.months:
+            if every:
                 list.append(self, entry)
-            else:
+            elif entry['year'] in self.years and entry['month'] in self.months:
                 list.append(self, entry)
 
         self.sort()
@@ -575,7 +574,7 @@ def icsout(inp):
     cal = Calendar()
     cal.add('prodid', '-//ccal.py 0.5//niij.org//')
     cal.add('version', '2.0')
-    
+
     entries = Entries(every=True, comm=True)
     for entry in entries:
         event = Event()
@@ -590,7 +589,6 @@ def icsout(inp):
         cal.add_component(event)
     print(cal.to_ical().decode('utf-8'))
     sys.exit(0)
-    
 
 def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False,
        exp=True, eli=0, evo=False):
@@ -619,11 +617,11 @@ if __name__ == '__main__':
                             version='%(prog)s 0.1')
         parser.add_argument('-c', action='store_true',
                             help='force colored output')
-        parser.add_argument('-d', '--data-file', metavar="filename", nargs="?",
+        parser.add_argument('-d', '--data-file', metavar="FILE", nargs="?",
                             default="~/.cal.dat",
                             help="file to load appointments from " + \
                                  "(default: ~/.cal.dat)")
-        parser.add_argument('-e', '--events-only', action='store_true',
+        parser.add_argument('-e', '--entries-only', action='store_true',
                             help="Suppress calendar month view")
         parser = argparse.ArgumentParser(parents=[parser])
         sub_p = parser.add_subparsers(help='actions')
@@ -648,7 +646,7 @@ if __name__ == '__main__':
         p_ics.add_argument('-i', metavar="FILE", nargs='?',
                            help="Read from stdin or file")
         p_ics.add_argument('-o', action='store_true',
-                           help="Output events as ics file to stdout")
+                           help="Output entire file as ics to stdout")
         #p_add = sub_p.add_parser('add', help='add calendar entry')
         #p_add.add_argument("date")
         #p_add.add_argument("description")
@@ -681,7 +679,7 @@ if __name__ == '__main__':
                                                     (day, month, year),
                                                     "%d %B %Y").date() \
                                for day in args.date[:-2]])
-        evo = args.events_only
+        evo = args.entries_only
         if args.c:
             fmt.colors = args.c
         dates = args.date
