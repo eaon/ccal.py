@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""ccal.py 0.3
+"""ccal.py 0.5
 
 Python implementation processing and extending ccal style ~/.cal.dat files"""
 
 # License (MIT)
 #
-# Copyright (c) 2012 Michael Zeltner <m@niij.org>
+# Copyright © 2014 Michael Zeltner <m@niij.org>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -74,7 +74,6 @@ Python implementation processing and extending ccal style ~/.cal.dat files"""
 #
 # input+output:
 # add output for ical (ICS files)
-# allow multiple data files -- use $(cat cal1 cal2 cal3 | ./ccal.py) ?
 # allow short names and numbers for month
 #
 # color:
@@ -83,10 +82,17 @@ Python implementation processing and extending ccal style ~/.cal.dat files"""
 # add color  for places (@placename)
 # add color  for URLs
 #
-# options:
-# add option to suppress calendar month view
 # -------------------------------------------------
 # Poor persons ./ccal.py add
+#
+# #!/bin/bash
+# DATE=$(date -d "$1" +"%Y %m %d")
+# if [[ $? -eq 0 ]]; then
+#     DATE=$(echo $DATE 00 $(sed -e "s,$1 ,,"<<<"$@"))
+#     echo $DATE >> ~/.cal.dat
+#     ccal.py ls -p -C
+#     echo \"$DATE\" added
+# fi
 #
 
 import datetime as dt
@@ -340,7 +346,7 @@ class Entry(object):
 
 class Entries(list):
     def __init__(self, fp=os.path.expanduser('~/.cal.dat'), bdt=(today(),),
-                 exp=True, comm=False):
+                 exp=True, comm=False, every=False):
         list.__init__(self)
         self.caldat = open(fp) if isinstance(fp, str) else fp
         self.bdt = bdt
@@ -377,7 +383,10 @@ class Entries(list):
 
         # ... hence we filter out entries later
         for entry in entries:
-            if entry['year'] in self.years and entry['month'] in self.months:
+            if every == False and entry['year'] in self.years and \
+               entry['month'] in self.months:
+                list.append(self, entry)
+            else:
                 list.append(self, entry)
 
         self.sort()
@@ -544,8 +553,47 @@ def nextTo(one, two):
              merge += "%s %s\n" % (one[i], two[i])
     return merge.strip()
 
+def icsin(inp):
+    from icalendar import cal as ical
+    if sys.stdin.isatty() and inp:
+        data = open(inp).read()
+    else:
+        data = sys.stdin.read()
+
+    cal = ical.Calendar.from_ical(data)
+
+    for comp in cal.walk():
+        if comp.name == "VEVENT":
+            codt = comp.decoded("DTSTART")
+            print(codt.strftime("%Y %m %d"), "00", comp.get("summary"))
+    sys.exit(0)
+
+def icsout(inp):
+    from icalendar.cal import Calendar, Event
+    from hashlib import sha1
+    inp = os.path.expanduser(inp)
+    cal = Calendar()
+    cal.add('prodid', '-//ccal.py 0.5//niij.org//')
+    cal.add('version', '2.0')
+    
+    entries = Entries(every=True, comm=True)
+    for entry in entries:
+        event = Event()
+        event.add('summary', entry.desc)
+        event.add('dtstart', entry.dt)
+        event.add('dtend', entry.dt+dt.timedelta(days=1))
+        event.add('dtstamp', dt.datetime.now())
+        uid = "%s%s%s %s" % (entry.dt.year, entry.dt.month, entry.dt.day, entry.desc)
+        event.add('uid', sha1(uid.encode('utf-8')).hexdigest())
+        if (entry.comm):
+            event.add('description', entry.comm.strip())
+        cal.add_component(event)
+    print(cal.to_ical().decode('utf-8'))
+    sys.exit(0)
+    
+
 def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False,
-       exp=True, eli=0):
+       exp=True, eli=0, evo=False):
     entries = Entries(bdt=bdt, fp=fp, comm=comm, exp=exp)
     pvs = ""
     if pve > 0:
@@ -556,6 +604,8 @@ def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False,
                         '\n'.join(pvs.split('\n')[:pve]))
     else:
         pvs = ""
+    if evo:
+        return repr(entries)+pvs
     cal = Calendar(bdt[0], bdt if len(bdt) > 1 else (bdt[0],), entries)
     if eli:
         entries.limit(eli)
@@ -573,6 +623,8 @@ if __name__ == '__main__':
                             default="~/.cal.dat",
                             help="file to load appointments from " + \
                                  "(default: ~/.cal.dat)")
+        parser.add_argument('-e', '--events-only', action='store_true',
+                            help="Suppress calendar month view")
         parser = argparse.ArgumentParser(parents=[parser])
         sub_p = parser.add_subparsers(help='actions')
         p_ls = sub_p.add_parser('ls', help='list calendar entries')
@@ -591,12 +643,26 @@ if __name__ == '__main__':
                           help='do not expand periodic dates',
                           action='store_false')
         p_ls.add_argument("date", nargs='*')
-        p_add = sub_p.add_parser('add', help='add calendar entry')
-        p_add.add_argument("date")
-        p_add.add_argument("description")
-        p_add.add_argument("comment", nargs="?")
+        p_ics = sub_p.add_parser('ics',
+                                 help="icalendar to ccal conversion tools")
+        p_ics.add_argument('-i', metavar="FILE", nargs='?',
+                           help="Read from stdin or file")
+        p_ics.add_argument('-o', action='store_true',
+                           help="Output events as ics file to stdout")
+        #p_add = sub_p.add_parser('add', help='add calendar entry')
+        #p_add.add_argument("date")
+        #p_add.add_argument("description")
+        #p_add.add_argument("comment", nargs="?")
         #p_ia = sub_p.add_parser('ia', help='Interactive mode')
+
         args = parser.parse_args()
+
+        if sys.argv[1] == 'ics' and sys.argv[2] == '-i':
+            icsin(args.i)
+
+        if sys.argv[1] == 'ics' and 'o' in args and args.o:
+            icsout(args.data_file)
+
         if not 'date' in args or not args.date:
             args.date = (today(),)
         elif len(args.date) == 1:
@@ -615,6 +681,7 @@ if __name__ == '__main__':
                                                     (day, month, year),
                                                     "%d %B %Y").date() \
                                for day in args.date[:-2]])
+        evo = args.events_only
         if args.c:
             fmt.colors = args.c
         dates = args.date
@@ -642,6 +709,7 @@ if __name__ == '__main__':
         comm = False
         exp = True
         eli = 0
+        evo = False
     # Override file data with stuff from stdin
     if sys.stdin.isatty():
         fp = os.path.expanduser(data)
@@ -649,7 +717,7 @@ if __name__ == '__main__':
         fp = sys.stdin
     if not sys.stdin.isatty():
         fp = sys.stdin
-    out = ls(bdt=dates, pve=pve, fp=fp, comm=comm, exp=exp, eli=eli)
+    out = ls(bdt=dates, pve=pve, fp=fp, comm=comm, exp=exp, eli=eli, evo=evo)
     print('')
     if fmt.colors:
         print(out)
