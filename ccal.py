@@ -101,6 +101,7 @@ import re
 import sys
 import os
 import argparse
+from io import StringIO
 
 today = dt.date.today
 
@@ -595,6 +596,7 @@ def ls(bdt, pve=7, cmt=False, fp=os.path.expanduser('~/.cal.dat'), comm=False,
     entries = Entries(bdt=bdt, fp=fp, comm=comm, exp=exp)
     pvs = ""
     if pve > 0:
+        if isinstance(fp, StringIO): fp.seek(0)
         pvd = bdt[0] + dt.timedelta(days=-(bdt[0].day-2)+30)
         pvs = repr(Entries(bdt=(None,pvd), fp=fp, exp=False))
     if pvs:
@@ -714,7 +716,7 @@ if __name__ == '__main__':
     else:
         fp = sys.stdin
     if not sys.stdin.isatty():
-        fp = sys.stdin
+        fp = StringIO(sys.stdin.read())
     out = ls(bdt=dates, pve=pve, fp=fp, comm=comm, exp=exp, eli=eli, evo=evo)
     print('')
     if fmt.colors:
